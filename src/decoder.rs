@@ -694,4 +694,139 @@ mod tests {
 
         assert!(all.next().is_none());
     }
+
+    // -------------------------------------------------------------------------
+    // Group 10 — validate_body_length() and validate_checksum()
+    // -------------------------------------------------------------------------
+    //
+    // All expected checksums and body lengths are pre-computed and verified with:
+    //   sum(bytes before "10=") % 256  and  len(bytes between "9=…\x01" and "10=")
+
+    #[test]
+    fn validate_body_length_correct() {
+        // "8=FIX.4.2\x019=5\x0135=D\x0110=181\x01"
+        // Body = "35=D\x01" = 5 bytes. Declared 9=5. Should pass.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x019=5\x0135=D\x0110=181\x01").unwrap();
+        assert!(msg.validate_body_length().is_ok());
+    }
+
+    #[test]
+    fn validate_body_length_wrong_value() {
+        // Declared 9=99 but actual body is 5 bytes. Should fail.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x019=99\x0135=D\x0110=000\x01").unwrap();
+        assert!(matches!(
+            msg.validate_body_length().unwrap_err(),
+            FixError::InvalidBodyLength
+        ));
+    }
+
+    #[test]
+    fn validate_body_length_multi_field_body() {
+        // "8=FIX.4.2\x019=25\x0135=D\x0149=SENDER\x0156=TARGET\x0110=195\x01"
+        // Body = "35=D\x0149=SENDER\x0156=TARGET\x01" = 25 bytes. Declared 9=25.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x019=25\x0135=D\x0149=SENDER\x0156=TARGET\x0110=195\x01")
+            .unwrap();
+        assert!(msg.validate_body_length().is_ok());
+    }
+
+    #[test]
+    fn validate_body_length_tag9_missing() {
+        // Message with fewer than 3 fields — no room for tag 8, 9, and 10.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x0135=D\x01").unwrap();
+        assert!(matches!(
+            msg.validate_body_length().unwrap_err(),
+            FixError::InvalidBodyLength
+        ));
+    }
+
+    #[test]
+    fn validate_body_length_tag9_not_second_field() {
+        // Tag 9 is not in position 1 — invalid message structure.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x0135=D\x019=5\x0110=000\x01").unwrap();
+        assert!(matches!(
+            msg.validate_body_length().unwrap_err(),
+            FixError::InvalidBodyLength
+        ));
+    }
+
+    #[test]
+    fn validate_body_length_tag10_not_last_field() {
+        // Tag 10 is not the last field — invalid message structure.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x019=5\x0110=000\x0135=D\x01").unwrap();
+        assert!(matches!(
+            msg.validate_body_length().unwrap_err(),
+            FixError::InvalidBodyLength
+        ));
+    }
+
+    #[test]
+    fn validate_checksum_correct() {
+        // "8=FIX.4.2\x019=5\x0135=D\x0110=181\x01"
+        // sum("8=FIX.4.2\x019=5\x0135=D\x01") % 256 = 181
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x019=5\x0135=D\x0110=181\x01").unwrap();
+        assert!(msg.validate_checksum().is_ok());
+    }
+
+    #[test]
+    fn validate_checksum_wrong_value() {
+        // Correct message bytes but checksum declared as 000 instead of 181.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x019=5\x0135=D\x0110=000\x01").unwrap();
+        assert!(matches!(
+            msg.validate_checksum().unwrap_err(),
+            FixError::InvalidCheckSum
+        ));
+    }
+
+    #[test]
+    fn validate_checksum_multi_field_body() {
+        // "8=FIX.4.2\x019=25\x0135=D\x0149=SENDER\x0156=TARGET\x0110=195\x01"
+        // sum of bytes before "10=" = 195
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x019=25\x0135=D\x0149=SENDER\x0156=TARGET\x0110=195\x01")
+            .unwrap();
+        assert!(msg.validate_checksum().is_ok());
+    }
+
+    #[test]
+    fn validate_checksum_tag10_missing() {
+        // No tag 10 as last field — should fail.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x0135=D\x01").unwrap();
+        assert!(matches!(
+            msg.validate_checksum().unwrap_err(),
+            FixError::InvalidCheckSum
+        ));
+    }
+
+    #[test]
+    fn validate_checksum_tag10_not_last_field() {
+        // Tag 10 is not the last field — invalid structure.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x0110=181\x0135=D\x01").unwrap();
+        assert!(matches!(
+            msg.validate_checksum().unwrap_err(),
+            FixError::InvalidCheckSum
+        ));
+    }
+
+    #[test]
+    fn validate_both_correct_together() {
+        // Both validations pass on the same well-formed message.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x019=25\x0135=D\x0149=SENDER\x0156=TARGET\x0110=195\x01")
+            .unwrap();
+        assert!(msg.validate_body_length().is_ok());
+        assert!(msg.validate_checksum().is_ok());
+    }
 }

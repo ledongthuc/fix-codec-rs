@@ -1,6 +1,9 @@
+use crate::body_length::parse_body_length;
+use crate::checksum::{compute_checksum, parse_checksum};
+use crate::error::FixError;
 use crate::field::Field;
 use crate::group::{parse_count, GroupIter, GroupSpec, FIX42_GROUPS};
-use crate::tag::Tag;
+use crate::tag::{self, Tag};
 
 /// A decoded FIX message.
 ///
@@ -118,6 +121,97 @@ impl<'a> Message<'a> {
     ///     }
     /// }
     /// ```
+    /// Validate the BodyLength field (tag 9).
+    ///
+    /// A FIX message body spans from the first byte after the `9=…\x01` field
+    /// up to and including the SOH that terminates the last field before `10=`.
+    /// This method computes that byte count from the raw buffer and compares it
+    /// to the value declared in tag 9.
+    ///
+    /// # Errors
+    /// Returns `FixError::InvalidBodyLength` when:
+    /// - The message has fewer than 3 fields (no room for tags 8, 9, and 10).
+    /// - Tag 9 is not at position 1 or its value cannot be parsed as an integer.
+    /// - Tag 10 is not the last field.
+    /// - The computed byte count does not match the declared value.
+    pub fn validate_body_length(&self) -> Result<(), FixError> {
+        let n = self.offsets.len();
+        if n < 3 {
+            return Err(FixError::InvalidBodyLength);
+        }
+
+        // Tag 9 must be the second field.
+        let (tag9, _, body_length_value_end) = self.offsets[1];
+        if tag9 != tag::BODY_LENGTH {
+            return Err(FixError::InvalidBodyLength);
+        }
+
+        // Tag 10 must be the last field.
+        let (tag10, checksum_value_start, _) = self.offsets[n - 1];
+        if tag10 != tag::CHECK_SUM {
+            return Err(FixError::InvalidBodyLength);
+        }
+
+        // Parse the declared body length from the raw buffer.
+        let declared = parse_body_length(
+            &self.buf[self.offsets[1].1 as usize..body_length_value_end as usize],
+        )
+        .ok_or(FixError::InvalidBodyLength)?;
+
+        // Body bytes: from (SOH of tag-9 field + 1) to (start of "10=" tag bytes).
+        // "10=" is 3 bytes, so the tag-10 field starts at checksum_value_start - 3.
+        let body_start = body_length_value_end as usize + 1;
+        let checksum_tag_start = checksum_value_start as usize - 3; // len("10=") == 3
+        let computed = checksum_tag_start.saturating_sub(body_start);
+
+        if computed == declared {
+            Ok(())
+        } else {
+            Err(FixError::InvalidBodyLength)
+        }
+    }
+
+    /// Validate the CheckSum field (tag 10).
+    ///
+    /// The FIX checksum is the sum of every byte from the start of the buffer
+    /// up to (but not including) the `10=` tag bytes, taken mod 256. This
+    /// method computes that value and compares it to the 3-digit decimal string
+    /// stored in tag 10.
+    ///
+    /// # Errors
+    /// Returns `FixError::InvalidCheckSum` when:
+    /// - The message has fewer than 1 field.
+    /// - Tag 10 is not the last field or its value cannot be parsed.
+    /// - The computed checksum does not match the declared value.
+    pub fn validate_checksum(&self) -> Result<(), FixError> {
+        let n = self.offsets.len();
+        if n == 0 {
+            return Err(FixError::InvalidCheckSum);
+        }
+
+        // Tag 10 must be the last field.
+        let (tag10, checksum_value_start, checksum_value_end) = self.offsets[n - 1];
+        if tag10 != tag::CHECK_SUM {
+            return Err(FixError::InvalidCheckSum);
+        }
+
+        // Parse the declared checksum from the raw buffer.
+        let declared = parse_checksum(
+            &self.buf[checksum_value_start as usize..checksum_value_end as usize],
+        )
+        .ok_or(FixError::InvalidCheckSum)?;
+
+        // Checksum covers all bytes before the "10=" tag bytes.
+        let checksum_tag_start = checksum_value_start as usize - 3; // len("10=") == 3
+        let computed = compute_checksum(&self.buf[..checksum_tag_start]);
+
+        if computed == declared {
+            Ok(())
+        } else {
+            Err(FixError::InvalidCheckSum)
+        }
+    }
+
     #[inline]
     pub fn all_groups(&self) -> impl Iterator<Item = (&'static GroupSpec, GroupIter<'a>)> + '_ {
         FIX42_GROUPS.iter().copied().filter_map(|spec| {

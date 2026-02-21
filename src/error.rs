@@ -12,4 +12,8 @@ pub enum FixError {
     EncodeError,
     /// An error occurred during message decoding.
     DecodeError,
+    /// Tag 9 (BodyLength) is absent, unparseable, or does not match the computed byte count.
+    InvalidBodyLength,
+    /// Tag 10 (CheckSum) is absent, unparseable, or does not match the computed checksum.
+    InvalidCheckSum,
 }
