@@ -1,4 +1,5 @@
 use crate::field::Field;
+use crate::group::{parse_count, GroupIter, GroupSpec, FIX42_GROUPS};
 use crate::tag::Tag;
 
 /// A decoded FIX message.
@@ -57,5 +58,77 @@ impl<'a> Message<'a> {
                 tag: t,
                 value: &self.buf[start as usize..end as usize],
             })
+    }
+
+    /// Return an iterator over the instances of the repeating group described
+    /// by `spec`.
+    ///
+    /// The iterator is zero-copy: each `Group` borrows directly into this
+    /// message's offset slice and raw buffer. If the count tag is absent or
+    /// its value is `0`, the iterator yields nothing.
+    ///
+    /// # Example
+    /// ```ignore
+    /// for entry in msg.groups(&group::MD_ENTRIES) {
+    ///     let ty  = entry.find(tag::MD_ENTRY_TYPE);
+    ///     let px  = entry.find(tag::MD_ENTRY_PX);
+    /// }
+    /// ```
+    #[inline]
+    pub fn groups(&self, spec: &GroupSpec) -> GroupIter<'a> {
+        // Find the NO_* count tag position.
+        let pos = self
+            .offsets
+            .iter()
+            .position(|&(t, _, _)| t == spec.count_tag);
+
+        let (count, remaining) = match pos {
+            None => (0, &[][..]),
+            Some(i) => {
+                let (_, start, end) = self.offsets[i];
+                let count = parse_count(&self.buf[start as usize..end as usize]);
+                let after = &self.offsets[i + 1..];
+                (count, after)
+            }
+        };
+
+        GroupIter {
+            buf: self.buf,
+            remaining,
+            delimiter_tag: spec.delimiter_tag,
+            count,
+            emitted: 0,
+        }
+    }
+
+    /// Return an iterator over every repeating group present in this message.
+    ///
+    /// Scans `FIX42_GROUPS` and yields `(&'static GroupSpec, GroupIter<'a>)`
+    /// for each spec whose count tag is found in the message with a non-zero
+    /// count. Groups whose count tag is absent or zero are skipped.
+    ///
+    /// The order follows the order fields appear in the message, not the order
+    /// of `FIX42_GROUPS`.
+    ///
+    /// # Example
+    /// ```ignore
+    /// for (spec, instances) in msg.all_groups() {
+    ///     for g in instances {
+    ///         // process each group instance
+    ///     }
+    /// }
+    /// ```
+    #[inline]
+    pub fn all_groups(&self) -> impl Iterator<Item = (&'static GroupSpec, GroupIter<'a>)> + '_ {
+        FIX42_GROUPS.iter().copied().filter_map(|spec| {
+            // Check if the count tag is present with a non-zero count.
+            let found = self.offsets.iter().find(|&&(t, _, _)| t == spec.count_tag);
+            let &(_, start, end) = found?;
+            let count = parse_count(&self.buf[start as usize..end as usize]);
+            if count == 0 {
+                return None;
+            }
+            Some((spec, self.groups(spec)))
+        })
     }
 }

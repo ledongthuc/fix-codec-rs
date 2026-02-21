@@ -100,6 +100,7 @@ impl Decoder {
 mod tests {
     use super::*;
     use crate::error::FixError;
+    use crate::group;
 
     // -------------------------------------------------------------------------
     // Group 1 — Happy path
@@ -482,5 +483,215 @@ mod tests {
         let msg = dec.decode(&buf).unwrap();
         assert_eq!(msg.len(), 33);
         assert_eq!(msg.field(32).tag, 33);
+    }
+
+    // -------------------------------------------------------------------------
+    // Group 8 — Repeating groups (successful decode + group navigation)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn group_single_misc_fee() {
+        // Allocation message with one MiscFee instance: NO_MISC_FEES=1 followed by
+        // MiscFeeAmt / MiscFeeCurr / MiscFeeType.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x019=50\x0135=J\x01136=1\x01137=10.50\x01138=USD\x01139=4\x01")
+            .unwrap();
+        assert_eq!(msg.len(), 7);
+
+        let fees: Vec<_> = msg.groups(&group::MISC_FEES).collect();
+        assert_eq!(fees.len(), 1);
+        assert_eq!(fees[0].find(crate::tag::MISC_FEE_AMT).unwrap().value, b"10.50");
+        assert_eq!(fees[0].find(crate::tag::MISC_FEE_CURR).unwrap().value, b"USD");
+        assert_eq!(fees[0].find(crate::tag::MISC_FEE_TYPE).unwrap().value, b"4");
+    }
+
+    #[test]
+    fn group_multiple_misc_fees() {
+        // Two MiscFee instances — delimiter tag (137) reappearance splits them.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(
+                b"35=J\x01136=2\x01137=5.00\x01138=USD\x01139=1\x01137=2.50\x01138=EUR\x01139=2\x01",
+            )
+            .unwrap();
+        assert_eq!(msg.len(), 8);
+
+        let fees: Vec<_> = msg.groups(&group::MISC_FEES).collect();
+        assert_eq!(fees.len(), 2);
+
+        assert_eq!(fees[0].find(crate::tag::MISC_FEE_AMT).unwrap().value, b"5.00");
+        assert_eq!(fees[0].find(crate::tag::MISC_FEE_CURR).unwrap().value, b"USD");
+        assert_eq!(fees[0].find(crate::tag::MISC_FEE_TYPE).unwrap().value, b"1");
+
+        assert_eq!(fees[1].find(crate::tag::MISC_FEE_AMT).unwrap().value, b"2.50");
+        assert_eq!(fees[1].find(crate::tag::MISC_FEE_CURR).unwrap().value, b"EUR");
+        assert_eq!(fees[1].find(crate::tag::MISC_FEE_TYPE).unwrap().value, b"2");
+    }
+
+    #[test]
+    fn group_md_entries_bid_and_offer() {
+        // MarketDataSnapshotFullRefresh with two MDEntry instances (bid + offer).
+        // NO_MD_ENTRIES=268, delimiter=MDEntryType=269.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(
+                b"35=W\x0149=SENDER\x0156=TARGET\x01268=2\x01\
+                269=0\x01270=99.50\x01271=1000\x01\
+                269=1\x01270=99.75\x01271=500\x01",
+            )
+            .unwrap();
+        assert_eq!(msg.len(), 10);
+
+        let entries: Vec<_> = msg.groups(&group::MD_ENTRIES).collect();
+        assert_eq!(entries.len(), 2);
+
+        // Bid (MDEntryType=0)
+        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_TYPE).unwrap().value, b"0");
+        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_PX).unwrap().value, b"99.50");
+        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_SIZE).unwrap().value, b"1000");
+
+        // Offer (MDEntryType=1)
+        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_TYPE).unwrap().value, b"1");
+        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_PX).unwrap().value, b"99.75");
+        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_SIZE).unwrap().value, b"500");
+    }
+
+    #[test]
+    fn group_routing_ids_two_routes() {
+        // Header with NO_ROUTING_IDS=2; RoutingType=216 is the delimiter.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(b"35=D\x01215=2\x01216=1\x01217=ROUTE_A\x01216=2\x01217=ROUTE_B\x01")
+            .unwrap();
+        assert_eq!(msg.len(), 6);
+
+        let routes: Vec<_> = msg.groups(&group::ROUTING_IDS).collect();
+        assert_eq!(routes.len(), 2);
+        assert_eq!(routes[0].find(crate::tag::ROUTING_TYPE).unwrap().value, b"1");
+        assert_eq!(routes[0].find(crate::tag::ROUTING_ID).unwrap().value, b"ROUTE_A");
+        assert_eq!(routes[1].find(crate::tag::ROUTING_TYPE).unwrap().value, b"2");
+        assert_eq!(routes[1].find(crate::tag::ROUTING_ID).unwrap().value, b"ROUTE_B");
+    }
+
+    #[test]
+    fn group_count_zero_yields_no_instances() {
+        // NO_MISC_FEES=0 — iterator must yield nothing even though count tag present.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"35=J\x01136=0\x0158=no fees\x01").unwrap();
+        assert_eq!(msg.len(), 3);
+        assert_eq!(msg.groups(&group::MISC_FEES).count(), 0);
+    }
+
+    #[test]
+    fn group_count_tag_absent_yields_no_instances() {
+        // Message has no NO_MISC_FEES tag at all.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x0135=D\x0149=SENDER\x01").unwrap();
+        assert_eq!(msg.groups(&group::MISC_FEES).count(), 0);
+    }
+
+    #[test]
+    fn group_fields_after_group_still_accessible() {
+        // Fields that follow a group in the flat message must remain accessible
+        // via Message::field() / Message::find() as usual.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(b"35=J\x01136=1\x01137=3.00\x01138=USD\x01139=1\x0110=200\x01")
+            .unwrap();
+        assert_eq!(msg.len(), 6);
+
+        // Group navigation works.
+        let fee = msg.groups(&group::MISC_FEES).next().unwrap();
+        assert_eq!(fee.find(crate::tag::MISC_FEE_AMT).unwrap().value, b"3.00");
+
+        // CheckSum field after the group is accessible normally.
+        assert_eq!(msg.find(crate::tag::CHECK_SUM).unwrap().value, b"200");
+    }
+
+    // -------------------------------------------------------------------------
+    // Group 9 — all_groups()
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn all_groups_empty_message_yields_nothing() {
+        // No fields at all — no groups present.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"").unwrap();
+        assert_eq!(msg.all_groups().count(), 0);
+    }
+
+    #[test]
+    fn all_groups_no_group_tags_yields_nothing() {
+        // Plain message with no NO_* tags.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"8=FIX.4.2\x0135=D\x0149=SENDER\x01").unwrap();
+        assert_eq!(msg.all_groups().count(), 0);
+    }
+
+    #[test]
+    fn all_groups_single_group_present() {
+        // Message contains only NO_MISC_FEES — all_groups must yield exactly one entry.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(b"35=J\x01136=1\x01137=7.00\x01138=USD\x01139=2\x01")
+            .unwrap();
+
+        let mut iter = msg.all_groups();
+        let (spec, mut instances) = iter.next().expect("expected one group");
+        assert_eq!(spec.count_tag, crate::tag::NO_MISC_FEES);
+
+        let g = instances.next().unwrap();
+        assert_eq!(g.find(crate::tag::MISC_FEE_AMT).unwrap().value, b"7.00");
+        assert_eq!(g.find(crate::tag::MISC_FEE_CURR).unwrap().value, b"USD");
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn all_groups_two_different_groups_present() {
+        // Message contains both NO_MISC_FEES and NO_ROUTING_IDS.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(
+                b"35=D\x01215=2\x01216=1\x01217=ROUTE_A\x01216=2\x01217=ROUTE_B\x01\
+                  136=1\x01137=1.00\x01138=USD\x01139=3\x01",
+            )
+            .unwrap();
+
+        let found: Vec<_> = msg.all_groups().map(|(spec, _)| spec.count_tag).collect();
+        // Both group count tags must appear, in FIX42_GROUPS order.
+        assert!(found.contains(&crate::tag::NO_MISC_FEES));
+        assert!(found.contains(&crate::tag::NO_ROUTING_IDS));
+        assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn all_groups_count_zero_skipped() {
+        // NO_MISC_FEES=0 must not appear in all_groups output.
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"35=J\x01136=0\x01").unwrap();
+        assert_eq!(msg.all_groups().count(), 0);
+    }
+
+    #[test]
+    fn all_groups_instances_are_correct() {
+        // Verify that instances returned through all_groups() have the right field values.
+        let mut dec = Decoder::new();
+        let msg = dec
+            .decode(b"35=W\x01268=2\x01269=0\x01270=50.00\x01269=1\x01270=50.25\x01")
+            .unwrap();
+
+        let mut all = msg.all_groups();
+        let (spec, instances) = all.next().expect("expected MD_ENTRIES group");
+        assert_eq!(spec.count_tag, crate::tag::NO_MD_ENTRIES);
+
+        let entries: Vec<_> = instances.collect();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_TYPE).unwrap().value, b"0");
+        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_PX).unwrap().value, b"50.00");
+        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_TYPE).unwrap().value, b"1");
+        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_PX).unwrap().value, b"50.25");
+
+        assert!(all.next().is_none());
     }
 }
