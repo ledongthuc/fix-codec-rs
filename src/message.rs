@@ -2,18 +2,31 @@ use crate::body_length::parse_body_length;
 use crate::checksum::{compute_checksum, parse_checksum};
 use crate::error::FixError;
 use crate::field::Field;
-use crate::group::{parse_count, GroupIter, GroupSpec, FIX42_GROUPS};
+use crate::group::{parse_count, GroupIter, GroupSpec, FIX42_GROUPS, FIX44_GROUPS};
 use crate::tag::{self, Tag};
 
 /// A decoded FIX message.
 ///
-/// Borrows offsets directly from the `Decoder`'s internal SmallVec and the
-/// raw input `buf` — zero allocation, zero copy, no unsafe code.
-/// The lifetime `'a` ties this `Message` to both the `Decoder` (offset slice)
-/// and the input byte buffer.
+/// Zero-allocation, zero-copy: both fields borrow directly from the `Decoder`
+/// and the original input slice. The lifetime `'a` ties this `Message` to
+/// both sources so no data is copied or heap-allocated.
 #[derive(Debug)]
 pub struct Message<'a> {
+    /// The raw bytes of the complete FIX message as received (e.g. the network
+    /// buffer passed to `Decoder::decode`). Every field value is a sub-slice of
+    /// this buffer — no bytes are copied when accessing fields.
     pub(crate) buf: &'a [u8],
+
+    /// Index of parsed fields. Each entry is `(tag, start, end)` where:
+    /// - `tag`   — the numeric FIX tag (e.g. `8`, `35`, `49`).
+    /// - `start` — byte offset in `buf` where the field *value* begins
+    ///             (the byte immediately after `=`).
+    /// - `end`   — byte offset in `buf` where the field value ends
+    ///             (the SOH byte `\x01`, exclusive).
+    ///
+    /// A field value is recovered as `&buf[start as usize..end as usize]`.
+    /// The slice is borrowed from the `Decoder`'s internal `SmallVec`, so it
+    /// lives as long as `'a`.
     pub(crate) offsets: &'a [(Tag, u32, u32)],
 }
 
@@ -49,6 +62,15 @@ impl<'a> Message<'a> {
             tag,
             value: &self.buf[start as usize..end as usize],
         })
+    }
+
+    /// Return the value of tag 8 (`BEGIN_STRING`) as a byte slice, or `None`
+    /// if the field is absent.
+    ///
+    /// Common values are `b"FIX.4.2"`, `b"FIX.4.4"`, `b"FIXT.1.1"`, etc.
+    #[inline]
+    pub fn fix_version(&self) -> Option<&'a [u8]> {
+        self.find(tag::BEGIN_STRING).map(|f| f.value)
     }
 
     /// Find the first field with the given tag, or `None` if not present.
@@ -106,12 +128,15 @@ impl<'a> Message<'a> {
 
     /// Return an iterator over every repeating group present in this message.
     ///
-    /// Scans `FIX42_GROUPS` and yields `(&'static GroupSpec, GroupIter<'a>)`
-    /// for each spec whose count tag is found in the message with a non-zero
-    /// count. Groups whose count tag is absent or zero are skipped.
+    /// Scans the appropriate group spec array based on the FIX version detected
+    /// from tag 8 (`BEGIN_STRING`): `FIX42_GROUPS` for FIX 4.2 messages, and
+    /// both `FIX42_GROUPS` + `FIX44_GROUPS` for FIX 4.4 messages (which is a
+    /// superset). Yields `(&'static GroupSpec, GroupIter<'a>)` for each spec
+    /// whose count tag is found in the message with a non-zero count. Groups
+    /// whose count tag is absent or zero are skipped.
     ///
-    /// The order follows the order fields appear in the message, not the order
-    /// of `FIX42_GROUPS`.
+    /// The order follows the order of the spec arrays, not the order fields
+    /// appear in the message.
     ///
     /// # Example
     /// ```ignore
@@ -214,7 +239,12 @@ impl<'a> Message<'a> {
 
     #[inline]
     pub fn all_groups(&self) -> impl Iterator<Item = (&'static GroupSpec, GroupIter<'a>)> + '_ {
-        FIX42_GROUPS.iter().copied().filter_map(|spec| {
+        let specs: &[&GroupSpec] = match self.fix_version() {
+            Some(b"FIX.4.4") => FIX44_GROUPS,
+            _ => FIX42_GROUPS,
+        };
+
+        specs.iter().copied().filter_map(|spec| {
             // Check if the count tag is present with a non-zero count.
             let found = self.offsets.iter().find(|&&(t, _, _)| t == spec.count_tag);
             let &(_, start, end) = found?;

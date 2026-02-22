@@ -339,6 +339,573 @@ pub const STRIKES: GroupSpec = GroupSpec {
     ],
 };
 
+// ---------------------------------------------------------------------------
+// FIX 4.4 built-in group specs
+// Source: https://www.onixs.biz/fix-dictionary/4.4/
+// ---------------------------------------------------------------------------
+
+/// NO_PARTY_IDS (453) — PartyID is the delimiter tag.
+pub const PARTY_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_PARTY_IDS,
+    delimiter_tag: tag::PARTY_ID,
+    member_tags: &[tag::PARTY_ID, tag::PARTY_ID_SOURCE, tag::PARTY_ROLE, tag::PARTY_SUB_ID],
+};
+
+/// NO_SECURITY_ALT_ID (454) — SecurityAltID is the delimiter tag.
+pub const SECURITY_ALT_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_SECURITY_ALT_ID,
+    delimiter_tag: tag::SECURITY_ALT_ID,
+    member_tags: &[tag::SECURITY_ALT_ID, tag::SECURITY_ALT_ID_SOURCE],
+};
+
+/// NO_UNDERLYING_SECURITY_ALT_ID (457) — UnderlyingSecurityAltID is the delimiter tag.
+pub const UNDERLYING_SECURITY_ALT_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_UNDERLYING_SECURITY_ALT_ID,
+    delimiter_tag: tag::UNDERLYING_SECURITY_ALT_ID,
+    member_tags: &[tag::UNDERLYING_SECURITY_ALT_ID, tag::UNDERLYING_SECURITY_ALT_ID_SOURCE],
+};
+
+/// NO_REGIST_DTLS (473) — MailingDtls is the delimiter tag.
+pub const REGIST_DTLS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_REGIST_DTLS,
+    delimiter_tag: tag::MAILING_DTLS,
+    member_tags: &[
+        tag::MAILING_DTLS,
+        tag::INVESTOR_COUNTRY_OF_RESIDENCE,
+        tag::MAILING_INST,
+        tag::REGIST_DTLS,
+        tag::REGIST_EMAIL,
+        tag::DISTRIB_PERCENTAGE,
+        tag::REGIST_ID,
+        tag::REGIST_TRANS_TYPE,
+        tag::OWNER_TYPE,
+        tag::NO_DISTRIB_INSTS,
+        tag::DISTRIB_PAYMENT_METHOD,
+        tag::CASH_DISTRIB_CURR,
+        tag::CASH_DISTRIB_AGENT_NAME,
+        tag::CASH_DISTRIB_AGENT_CODE,
+        tag::CASH_DISTRIB_AGENT_ACCT_NUMBER,
+        tag::CASH_DISTRIB_PAY_REF,
+        tag::CASH_DISTRIB_AGENT_ACCT_NAME,
+    ],
+};
+
+/// NO_DISTRIB_INSTS (510) — DistribPaymentMethod is the delimiter tag.
+pub const DISTRIB_INSTS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_DISTRIB_INSTS,
+    delimiter_tag: tag::DISTRIB_PAYMENT_METHOD,
+    member_tags: &[
+        tag::DISTRIB_PAYMENT_METHOD,
+        tag::DISTRIB_PERCENTAGE,
+        tag::CASH_DISTRIB_CURR,
+        tag::CASH_DISTRIB_AGENT_NAME,
+        tag::CASH_DISTRIB_AGENT_CODE,
+        tag::CASH_DISTRIB_AGENT_ACCT_NUMBER,
+        tag::CASH_DISTRIB_PAY_REF,
+        tag::CASH_DISTRIB_AGENT_ACCT_NAME,
+    ],
+};
+
+/// NO_CONT_AMTS (518) — ContAmtType is the delimiter tag.
+pub const CONT_AMTS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_CONT_AMTS,
+    delimiter_tag: tag::CONT_AMT_TYPE,
+    member_tags: &[tag::CONT_AMT_TYPE, tag::CONT_AMT_VALUE, tag::CONT_AMT_CURR],
+};
+
+/// NO_NESTED_PARTY_IDS (539) — NestedPartyID is the delimiter tag.
+pub const NESTED_PARTY_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_NESTED_PARTY_IDS,
+    delimiter_tag: tag::NESTED_PARTY_ID,
+    member_tags: &[
+        tag::NESTED_PARTY_ID,
+        tag::NESTED_PARTY_ID_SOURCE,
+        tag::NESTED_PARTY_ROLE,
+        tag::NESTED_PARTY_SUB_ID,
+    ],
+};
+
+/// NO_SIDES (552) — Side is the delimiter tag.
+pub const SIDES: GroupSpec = GroupSpec {
+    count_tag: tag::NO_SIDES,
+    delimiter_tag: tag::SIDE,
+    member_tags: &[
+        tag::SIDE,
+        tag::ORDER_ID,
+        tag::SECONDARY_ORDER_ID,
+        tag::CL_ORD_ID,
+        tag::SECONDARY_CL_ORD_ID,
+        tag::LIST_ID,
+        tag::ACCOUNT,
+        tag::ACCT_ID_SOURCE,
+        tag::ACCOUNT_TYPE,
+        tag::PROCESS_CODE,
+        tag::ODD_LOT,
+        tag::NO_CLEARING_INSTRUCTIONS,
+        tag::CLEARING_INSTRUCTION,
+        tag::CLEARING_FEE_INDICATOR,
+        tag::TRADE_INPUT_SOURCE,
+        tag::TRADE_INPUT_DEVICE,
+        tag::ORDER_INPUT_DEVICE,
+        tag::CURRENCY,
+        tag::COMPLIANCE_ID,
+        tag::SOLICITED_FLAG,
+        tag::ORDER_CAPACITY,
+        tag::ORDER_RESTRICTIONS,
+        tag::CUST_ORDER_CAPACITY,
+        tag::ORD_TYPE,
+        tag::EXEC_INST,
+        tag::TRANS_BKD_TIME,
+        tag::TRADING_SESSION_ID,
+        tag::TRADING_SESSION_SUB_ID,
+        tag::COMMISSION,
+        tag::COMM_TYPE,
+        tag::COMM_CURRENCY,
+        tag::FUND_RENEW_WAIV,
+        tag::GROSS_TRADE_AMT,
+        tag::NUM_DAYS_INTEREST,
+        tag::EX_DESTINATION,
+        tag::ACCRUED_INTEREST_RATE,
+        tag::ACCRUED_INTEREST_AMT,
+        tag::INTEREST_AT_MATURITY,
+        tag::END_ACCRUED_INTEREST_AMT,
+        tag::START_CASH,
+        tag::END_CASH,
+        tag::NET_MONEY,
+        tag::SETTL_CURR_AMT,
+        tag::SETTL_CURRENCY,
+        tag::SETTL_CURR_FX_RATE,
+        tag::SETTL_CURR_FX_RATE_CALC,
+        tag::POSITION_EFFECT,
+        tag::TEXT,
+        tag::ENCODED_TEXT_LEN,
+        tag::ENCODED_TEXT,
+        tag::SIDE_MULTI_LEG_REPORTING_TYPE,
+        tag::NO_CONT_AMTS,
+        tag::CONT_AMT_TYPE,
+        tag::CONT_AMT_VALUE,
+        tag::CONT_AMT_CURR,
+        tag::NO_MISC_FEES,
+        tag::MISC_FEE_AMT,
+        tag::MISC_FEE_CURR,
+        tag::MISC_FEE_TYPE,
+        tag::MISC_FEE_BASIS,
+        tag::EXCHANGE_RULE,
+        tag::TRADE_ALLOC_INDICATOR,
+        tag::PREALLOC_METHOD,
+        tag::ALLOC_ID,
+        tag::NO_ALLOCS,
+        tag::ALLOC_ACCOUNT,
+        tag::ALLOC_ACCT_ID_SOURCE,
+        tag::ALLOC_SETTL_CURRENCY,
+        tag::INDIVIDUAL_ALLOC_ID,
+        tag::ALLOC_SHARES,
+    ],
+};
+
+/// NO_SECURITY_TYPES (558) — SecurityType is the delimiter tag.
+pub const SECURITY_TYPES: GroupSpec = GroupSpec {
+    count_tag: tag::NO_SECURITY_TYPES,
+    delimiter_tag: tag::SECURITY_TYPE,
+    member_tags: &[tag::SECURITY_TYPE, tag::PRODUCT, tag::CFI_CODE],
+};
+
+/// NO_AFFECTED_ORDERS (534) — AffectedOrderID is the delimiter tag.
+pub const AFFECTED_ORDERS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_AFFECTED_ORDERS,
+    delimiter_tag: tag::AFFECTED_ORDER_ID,
+    member_tags: &[tag::AFFECTED_ORDER_ID, tag::AFFECTED_SECONDARY_ORDER_ID],
+};
+
+/// NO_LEGS (555) — LegSymbol is the delimiter tag.
+pub const LEGS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_LEGS,
+    delimiter_tag: tag::LEG_SYMBOL,
+    member_tags: &[
+        tag::LEG_SYMBOL,
+        tag::LEG_SYMBOL_SFX,
+        tag::LEG_SECURITY_ID,
+        tag::LEG_SECURITY_ID_SOURCE,
+        tag::NO_LEG_SECURITY_ALT_ID,
+        tag::LEG_SECURITY_ALT_ID,
+        tag::LEG_SECURITY_ALT_ID_SOURCE,
+        tag::LEG_PRODUCT,
+        tag::LEG_CFI_CODE,
+        tag::LEG_SECURITY_TYPE,
+        tag::LEG_MATURITY_MONTH_YEAR,
+        tag::LEG_MATURITY_DATE,
+        tag::LEG_STRIKE_PRICE,
+        tag::LEG_OPT_ATTRIBUTE,
+        tag::LEG_CONTRACT_MULTIPLIER,
+        tag::LEG_COUPON_RATE,
+        tag::LEG_SECURITY_EXCHANGE,
+        tag::LEG_ISSUER,
+        tag::ENCODED_LEG_ISSUER_LEN,
+        tag::ENCODED_LEG_ISSUER,
+        tag::LEG_SECURITY_DESC,
+        tag::ENCODED_LEG_SECURITY_DESC_LEN,
+        tag::ENCODED_LEG_SECURITY_DESC,
+        tag::LEG_RATIO_QTY,
+        tag::LEG_SIDE,
+        tag::LEG_CURRENCY,
+        tag::LEG_COUNTRY_OF_ISSUE,
+        tag::LEG_STATE_OR_PROVINCE_OF_ISSUE,
+        tag::LEG_LOCALE_OF_ISSUE,
+        tag::LEG_INSTR_REGISTRY,
+        tag::LEG_DATED_DATE,
+        tag::LEG_POOL,
+        tag::LEG_CONTRACT_SETTL_MONTH,
+        tag::LEG_INTEREST_ACCRUAL_DATE,
+        tag::LEG_QTY,
+        tag::LEG_SWAP_TYPE,
+        tag::NO_LEG_STIPULATIONS,
+        tag::LEG_STIPULATION_TYPE,
+        tag::LEG_STIPULATION_VALUE,
+        tag::LEG_POSITION_EFFECT,
+        tag::LEG_COVERED_OR_UNCOVERED,
+        tag::LEG_PRICE,
+        tag::LEG_SETTL_TYPE,
+        tag::LEG_SETTL_DATE,
+        tag::LEG_LAST_PX,
+        tag::LEG_REF_ID,
+    ],
+};
+
+/// NO_UNDERLYINGS (711) — UnderlyingSymbol is the delimiter tag.
+pub const UNDERLYINGS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_UNDERLYINGS,
+    delimiter_tag: tag::UNDERLYING_SYMBOL,
+    member_tags: &[
+        tag::UNDERLYING_SYMBOL,
+        tag::UNDERLYING_SYMBOL_SFX,
+        tag::UNDERLYING_SECURITY_ID,
+        tag::UNDERLYING_ID_SOURCE,
+        tag::UNDERLYING_SECURITY_TYPE,
+        tag::UNDERLYING_MATURITY_MONTH_YEAR,
+        tag::UNDERLYING_MATURITY_DATE,
+        tag::UNDERLYING_PUT_OR_CALL,
+        tag::UNDERLYING_STRIKE_PRICE,
+        tag::UNDERLYING_OPT_ATTRIBUTE,
+        tag::UNDERLYING_CONTRACT_MULTIPLIER,
+        tag::UNDERLYING_COUPON_RATE,
+        tag::UNDERLYING_SECURITY_EXCHANGE,
+        tag::UNDERLYING_ISSUER,
+        tag::ENCODED_UNDERLYING_ISSUER_LEN,
+        tag::ENCODED_UNDERLYING_ISSUER,
+        tag::UNDERLYING_SECURITY_DESC,
+        tag::ENCODED_UNDERLYING_SECURITY_DESC_LEN,
+        tag::ENCODED_UNDERLYING_SECURITY_DESC,
+        tag::UNDERLYING_COUPON_PAYMENT_DATE,
+        tag::UNDERLYING_ISSUE_DATE,
+        tag::UNDERLYING_REPO_COLLATERAL_SECURITY_TYPE,
+        tag::UNDERLYING_REPURCHASE_TERM,
+        tag::UNDERLYING_REPURCHASE_RATE,
+        tag::UNDERLYING_FACTOR,
+        tag::UNDERLYING_CREDIT_RATING,
+        tag::UNDERLYING_INSTR_REGISTRY,
+        tag::UNDERLYING_COUNTRY_OF_ISSUE,
+        tag::UNDERLYING_STATE_OR_PROVINCE_OF_ISSUE,
+        tag::UNDERLYING_LOCALE_OF_ISSUE,
+        tag::UNDERLYING_REDEMPTION_DATE,
+        tag::UNDERLYING_STRIKE_CURRENCY,
+        tag::UNDERLYING_SECURITY_SUB_TYPE,
+        tag::UNDERLYING_PRODUCT,
+        tag::UNDERLYING_CFI_CODE,
+        tag::UNDERLYING_CP_PROGRAM,
+        tag::UNDERLYING_CP_REG_TYPE,
+        tag::UNDERLYING_LAST_PX,
+        tag::UNDERLYING_LAST_QTY,
+        tag::UNDERLYING_QTY,
+        tag::UNDERLYING_SETTL_PRICE,
+        tag::UNDERLYING_SETTL_PRICE_TYPE,
+        tag::UNDERLYING_DIRTY_PRICE,
+        tag::UNDERLYING_END_PRICE,
+        tag::UNDERLYING_START_VALUE,
+        tag::UNDERLYING_CURRENT_VALUE,
+        tag::UNDERLYING_END_VALUE,
+        tag::NO_UNDERLYING_SECURITY_ALT_ID,
+        tag::UNDERLYING_SECURITY_ALT_ID,
+        tag::UNDERLYING_SECURITY_ALT_ID_SOURCE,
+        tag::UNDERLYING_STIP_TYPE,
+        tag::UNDERLYING_STIP_VALUE,
+    ],
+};
+
+/// NO_POSITIONS (702) — PosType is the delimiter tag.
+pub const POSITIONS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_POSITIONS,
+    delimiter_tag: tag::POS_TYPE,
+    member_tags: &[tag::POS_TYPE, tag::LONG_QTY, tag::SHORT_QTY, tag::POS_QTY_STATUS],
+};
+
+/// NO_QUOTE_QUALIFIERS (735) — QuoteQualifier is the delimiter tag.
+pub const QUOTE_QUALIFIERS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_QUOTE_QUALIFIERS,
+    delimiter_tag: tag::QUOTE_QUALIFIER,
+    member_tags: &[tag::QUOTE_QUALIFIER],
+};
+
+/// NO_POS_AMT (753) — PosAmtType is the delimiter tag.
+pub const POS_AMTS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_POS_AMT,
+    delimiter_tag: tag::POS_AMT_TYPE,
+    member_tags: &[tag::POS_AMT_TYPE, tag::POS_AMT],
+};
+
+/// NO_NESTED2_PARTY_IDS (756) — Nested2PartyID is the delimiter tag.
+pub const NESTED2_PARTY_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_NESTED2_PARTY_IDS,
+    delimiter_tag: tag::NESTED2_PARTY_ID,
+    member_tags: &[
+        tag::NESTED2_PARTY_ID,
+        tag::NESTED2_PARTY_ID_SOURCE,
+        tag::NESTED2_PARTY_ROLE,
+        tag::NESTED2_PARTY_SUB_ID,
+    ],
+};
+
+/// NO_TRD_REG_TIMESTAMPS (768) — TrdRegTimestamp is the delimiter tag.
+pub const TRD_REG_TIMESTAMPS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_TRD_REG_TIMESTAMPS,
+    delimiter_tag: tag::TRD_REG_TIMESTAMP,
+    member_tags: &[
+        tag::TRD_REG_TIMESTAMP,
+        tag::TRD_REG_TIMESTAMP_TYPE,
+        tag::TRD_REG_TIMESTAMP_ORIGIN,
+    ],
+};
+
+/// NO_SETTL_INST (778) — SettlInstID is the delimiter tag.
+pub const SETTL_INST: GroupSpec = GroupSpec {
+    count_tag: tag::NO_SETTL_INST,
+    delimiter_tag: tag::SETTL_INST_ID,
+    member_tags: &[
+        tag::SETTL_INST_ID,
+        tag::SETTL_INST_TRANS_TYPE,
+        tag::SETTL_INST_REF_ID,
+        tag::SETTL_INST_MODE,
+        tag::SETTL_INST_SOURCE,
+        tag::SECURITY_ID,
+        tag::SIDE,
+        tag::TRANSACT_TIME,
+        tag::EFFECTIVE_TIME,
+    ],
+};
+
+/// NO_SETTL_PARTY_IDS (781) — SettlPartyID is the delimiter tag.
+pub const SETTL_PARTY_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_SETTL_PARTY_IDS,
+    delimiter_tag: tag::SETTL_PARTY_ID,
+    member_tags: &[
+        tag::SETTL_PARTY_ID,
+        tag::SETTL_PARTY_ID_SOURCE,
+        tag::SETTL_PARTY_ROLE,
+        tag::SETTL_PARTY_SUB_ID,
+        tag::SETTL_PARTY_SUB_ID_TYPE,
+    ],
+};
+
+/// NO_PARTY_SUB_IDS (802) — PartySubID is the delimiter tag.
+pub const PARTY_SUB_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_PARTY_SUB_IDS,
+    delimiter_tag: tag::PARTY_SUB_ID,
+    member_tags: &[tag::PARTY_SUB_ID, tag::PARTY_SUB_ID_TYPE],
+};
+
+/// NO_NESTED_PARTY_SUB_IDS (804) — NestedPartySubID is the delimiter tag.
+pub const NESTED_PARTY_SUB_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_NESTED_PARTY_SUB_IDS,
+    delimiter_tag: tag::NESTED_PARTY_SUB_ID,
+    member_tags: &[tag::NESTED_PARTY_SUB_ID, tag::NESTED_PARTY_SUB_ID_TYPE],
+};
+
+/// NO_NESTED2_PARTY_SUB_IDS (806) — Nested2PartySubID is the delimiter tag.
+pub const NESTED2_PARTY_SUB_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_NESTED2_PARTY_SUB_IDS,
+    delimiter_tag: tag::NESTED2_PARTY_SUB_ID,
+    member_tags: &[tag::NESTED2_PARTY_SUB_ID, tag::NESTED2_PARTY_SUB_ID_TYPE],
+};
+
+/// NO_ALT_MD_SOURCE (816) — AltMDSourceID is the delimiter tag.
+pub const ALT_MD_SOURCES: GroupSpec = GroupSpec {
+    count_tag: tag::NO_ALT_MD_SOURCE,
+    delimiter_tag: tag::ALT_MD_SOURCE_ID,
+    member_tags: &[tag::ALT_MD_SOURCE_ID],
+};
+
+/// NO_CAPACITIES (862) — OrderCapacity is the delimiter tag.
+pub const CAPACITIES: GroupSpec = GroupSpec {
+    count_tag: tag::NO_CAPACITIES,
+    delimiter_tag: tag::ORDER_CAPACITY,
+    member_tags: &[tag::ORDER_CAPACITY, tag::ORDER_CAPACITY_QTY],
+};
+
+/// NO_EVENTS (864) — EventType is the delimiter tag.
+pub const EVENTS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_EVENTS,
+    delimiter_tag: tag::EVENT_TYPE,
+    member_tags: &[tag::EVENT_TYPE, tag::EVENT_DATE, tag::EVENT_PX, tag::EVENT_TEXT],
+};
+
+/// NO_INSTR_ATTRIB (870) — InstrAttribType is the delimiter tag.
+pub const INSTR_ATTRIB: GroupSpec = GroupSpec {
+    count_tag: tag::NO_INSTR_ATTRIB,
+    delimiter_tag: tag::INSTR_ATTRIB_TYPE,
+    member_tags: &[tag::INSTR_ATTRIB_TYPE, tag::INSTR_ATTRIB_VALUE],
+};
+
+/// NO_UNDERLYING_STIPS (887) — UnderlyingStipType is the delimiter tag.
+pub const UNDERLYING_STIPS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_UNDERLYING_STIPS,
+    delimiter_tag: tag::UNDERLYING_STIP_TYPE,
+    member_tags: &[tag::UNDERLYING_STIP_TYPE, tag::UNDERLYING_STIP_VALUE],
+};
+
+/// NO_TRADES (897) — TradeReportID is the delimiter tag.
+pub const TRADES: GroupSpec = GroupSpec {
+    count_tag: tag::NO_TRADES,
+    delimiter_tag: tag::TRADE_REPORT_ID,
+    member_tags: &[tag::TRADE_REPORT_ID, tag::SECONDARY_TRADE_REPORT_ID],
+};
+
+/// NO_COMP_IDS (936) — RefCompID is the delimiter tag.
+pub const COMP_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_COMP_IDS,
+    delimiter_tag: tag::REF_COMP_ID,
+    member_tags: &[
+        tag::REF_COMP_ID,
+        tag::REF_SUB_ID,
+        tag::STATUS_VALUE,
+        tag::STATUS_TEXT,
+    ],
+};
+
+/// NO_COLL_INQUIRY_QUALIFIER (938) — CollInquiryQualifier is the delimiter tag.
+pub const COLL_INQUIRY_QUALIFIERS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_COLL_INQUIRY_QUALIFIER,
+    delimiter_tag: tag::COLL_INQUIRY_QUALIFIER,
+    member_tags: &[tag::COLL_INQUIRY_QUALIFIER],
+};
+
+/// NO_NESTED3_PARTY_IDS (948) — Nested3PartyID is the delimiter tag.
+pub const NESTED3_PARTY_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_NESTED3_PARTY_IDS,
+    delimiter_tag: tag::NESTED3_PARTY_ID,
+    member_tags: &[
+        tag::NESTED3_PARTY_ID,
+        tag::NESTED3_PARTY_ID_SOURCE,
+        tag::NESTED3_PARTY_ROLE,
+        tag::NESTED3_PARTY_SUB_ID,
+        tag::NESTED3_PARTY_SUB_ID_TYPE,
+    ],
+};
+
+/// NO_LEG_SECURITY_ALT_ID (604) — LegSecurityAltID is the delimiter tag.
+pub const LEG_SECURITY_ALT_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_LEG_SECURITY_ALT_ID,
+    delimiter_tag: tag::LEG_SECURITY_ALT_ID,
+    member_tags: &[tag::LEG_SECURITY_ALT_ID, tag::LEG_SECURITY_ALT_ID_SOURCE],
+};
+
+/// NO_LEG_STIPULATIONS (683) — LegStipulationType is the delimiter tag.
+pub const LEG_STIPULATIONS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_LEG_STIPULATIONS,
+    delimiter_tag: tag::LEG_STIPULATION_TYPE,
+    member_tags: &[tag::LEG_STIPULATION_TYPE, tag::LEG_STIPULATION_VALUE],
+};
+
+/// NO_LEG_ALLOCS (670) — LegAllocAccount is the delimiter tag.
+pub const LEG_ALLOCS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_LEG_ALLOCS,
+    delimiter_tag: tag::LEG_ALLOC_ACCOUNT,
+    member_tags: &[
+        tag::LEG_ALLOC_ACCOUNT,
+        tag::LEG_INDIVIDUAL_ALLOC_ID,
+        tag::LEG_ALLOC_QTY,
+        tag::LEG_ALLOC_ACCT_ID_SOURCE,
+        tag::LEG_SETTL_CURRENCY,
+    ],
+};
+
+/// NO_HOPS (627) — HopCompID is the delimiter tag.
+pub const HOPS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_HOPS,
+    delimiter_tag: tag::HOP_COMP_ID,
+    member_tags: &[tag::HOP_COMP_ID, tag::HOP_SENDING_TIME, tag::HOP_REF_ID],
+};
+
+/// NO_CLEARING_INSTRUCTIONS (576) — ClearingInstruction is the delimiter tag.
+pub const CLEARING_INSTRUCTIONS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_CLEARING_INSTRUCTIONS,
+    delimiter_tag: tag::CLEARING_INSTRUCTION,
+    member_tags: &[tag::CLEARING_INSTRUCTION],
+};
+
+/// All built-in FIX 4.4 group specs (superset of `FIX42_GROUPS`).
+///
+/// Includes all FIX 4.2 groups plus the groups introduced in FIX 4.4,
+/// so this array alone covers every repeating group that can appear in
+/// a FIX 4.4 message.
+pub const FIX44_GROUPS: &[&GroupSpec] = &[
+    // -- FIX 4.2 groups (inherited) --
+    &ALLOCS,
+    &ORDERS,
+    &RPTS,
+    &DLVY_INST,
+    &EXECS,
+    &MISC_FEES,
+    &RELATED_SYM,
+    &IOI_QUALIFIERS,
+    &ROUTING_IDS,
+    &MD_ENTRY_TYPES,
+    &MD_ENTRIES,
+    &QUOTE_ENTRIES,
+    &QUOTE_SETS,
+    &CONTRA_BROKERS,
+    &MSG_TYPES,
+    &TRADING_SESSIONS,
+    &BID_DESCRIPTORS,
+    &BID_COMPONENTS,
+    &STRIKES,
+    // -- FIX 4.4 additions --
+    &PARTY_IDS,
+    &SECURITY_ALT_IDS,
+    &UNDERLYING_SECURITY_ALT_IDS,
+    &REGIST_DTLS,
+    &DISTRIB_INSTS,
+    &CONT_AMTS,
+    &NESTED_PARTY_IDS,
+    &SIDES,
+    &SECURITY_TYPES,
+    &AFFECTED_ORDERS,
+    &LEGS,
+    &UNDERLYINGS,
+    &POSITIONS,
+    &QUOTE_QUALIFIERS,
+    &POS_AMTS,
+    &NESTED2_PARTY_IDS,
+    &TRD_REG_TIMESTAMPS,
+    &SETTL_INST,
+    &SETTL_PARTY_IDS,
+    &PARTY_SUB_IDS,
+    &NESTED_PARTY_SUB_IDS,
+    &NESTED2_PARTY_SUB_IDS,
+    &ALT_MD_SOURCES,
+    &CAPACITIES,
+    &EVENTS,
+    &INSTR_ATTRIB,
+    &UNDERLYING_STIPS,
+    &TRADES,
+    &COMP_IDS,
+    &COLL_INQUIRY_QUALIFIERS,
+    &NESTED3_PARTY_IDS,
+    &LEG_SECURITY_ALT_IDS,
+    &LEG_STIPULATIONS,
+    &LEG_ALLOCS,
+    &HOPS,
+    &CLEARING_INSTRUCTIONS,
+];
+
 /// All built-in FIX 4.2 group specs.
 pub const FIX42_GROUPS: &[&GroupSpec] = &[
     &ALLOCS,
