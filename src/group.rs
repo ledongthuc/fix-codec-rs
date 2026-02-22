@@ -987,6 +987,39 @@ impl<'a> Group<'a> {
                 value: &self.buf[start as usize..end as usize],
             })
     }
+
+    /// Return an iterator over the instances of a repeating group nested inside
+    /// this group instance. Mirrors [`Message::groups`] exactly.
+    ///
+    /// Because this group's `offsets` slice is already bounded to this parent
+    /// instance, the nested iterator cannot escape into sibling parent instances.
+    ///
+    /// Returns an empty iterator if the nested count tag is absent or zero.
+    #[inline]
+    pub fn groups(&self, spec: &GroupSpec) -> GroupIter<'a> {
+        let pos = self
+            .offsets
+            .iter()
+            .position(|&(t, _, _)| t == spec.count_tag);
+
+        let (count, remaining) = match pos {
+            None => (0, &[][..]),
+            Some(i) => {
+                let (_, start, end) = self.offsets[i];
+                let count = parse_count(&self.buf[start as usize..end as usize]);
+                let after = &self.offsets[i + 1..];
+                (count, after)
+            }
+        };
+
+        GroupIter {
+            buf: self.buf,
+            remaining,
+            delimiter_tag: spec.delimiter_tag,
+            count,
+            emitted: 0,
+        }
+    }
 }
 
 /// Iterator over the instances of one repeating group.
@@ -1271,5 +1304,135 @@ mod tests {
         let g = msg.groups(&MISC_FEES).next().unwrap();
         assert!(!g.is_empty());
         assert_eq!(g.len(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Nested groups — Group::groups()
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn nested_group_single_parent_single_child() {
+        // SIDES=1, one side with NO_CONT_AMTS=1
+        let raw = fix("552=1|54=1|37=ORD1|518=1|519=1|520=100.00|521=USD|");
+        let mut dec = Decoder::new();
+        let msg = dec.decode(&raw).unwrap();
+
+        let side = msg.groups(&SIDES).next().expect("expected one side");
+        assert_eq!(side.find(tag::SIDE).unwrap().value, b"1");
+        assert_eq!(side.find(tag::ORDER_ID).unwrap().value, b"ORD1");
+
+        let mut nested = side.groups(&CONT_AMTS);
+        let ca = nested.next().expect("expected one CONT_AMTS instance");
+        assert!(nested.next().is_none());
+        assert_eq!(ca.find(tag::CONT_AMT_TYPE).unwrap().value, b"1");
+        assert_eq!(ca.find(tag::CONT_AMT_VALUE).unwrap().value, b"100.00");
+        assert_eq!(ca.find(tag::CONT_AMT_CURR).unwrap().value, b"USD");
+    }
+
+    #[test]
+    fn nested_group_single_parent_multiple_children() {
+        // SIDES=1, one side with NO_CONT_AMTS=2
+        let raw = fix("552=1|54=1|518=2|519=1|520=100.00|521=USD|519=2|520=50.00|521=EUR|");
+        let mut dec = Decoder::new();
+        let msg = dec.decode(&raw).unwrap();
+
+        let side = msg.groups(&SIDES).next().unwrap();
+        let cont_amts: Vec<_> = side.groups(&CONT_AMTS).collect();
+        assert_eq!(cont_amts.len(), 2);
+        assert_eq!(cont_amts[0].find(tag::CONT_AMT_TYPE).unwrap().value, b"1");
+        assert_eq!(cont_amts[0].find(tag::CONT_AMT_VALUE).unwrap().value, b"100.00");
+        assert_eq!(cont_amts[0].find(tag::CONT_AMT_CURR).unwrap().value, b"USD");
+        assert_eq!(cont_amts[1].find(tag::CONT_AMT_TYPE).unwrap().value, b"2");
+        assert_eq!(cont_amts[1].find(tag::CONT_AMT_VALUE).unwrap().value, b"50.00");
+        assert_eq!(cont_amts[1].find(tag::CONT_AMT_CURR).unwrap().value, b"EUR");
+    }
+
+    #[test]
+    fn nested_group_multiple_parents_each_with_children() {
+        // SIDES=2: side1 has 1 CONT_AMT, side2 has 2 CONT_AMTs — critical boundary test
+        let raw = fix(
+            "552=2|\
+             54=1|518=1|519=1|520=100.00|521=USD|\
+             54=2|518=2|519=1|520=5.00|521=EUR|519=2|520=3.00|521=GBP|",
+        );
+        let mut dec = Decoder::new();
+        let msg = dec.decode(&raw).unwrap();
+
+        let sides: Vec<_> = msg.groups(&SIDES).collect();
+        assert_eq!(sides.len(), 2);
+
+        let side1_cas: Vec<_> = sides[0].groups(&CONT_AMTS).collect();
+        assert_eq!(side1_cas.len(), 1);
+        assert_eq!(side1_cas[0].find(tag::CONT_AMT_VALUE).unwrap().value, b"100.00");
+        assert_eq!(side1_cas[0].find(tag::CONT_AMT_CURR).unwrap().value, b"USD");
+
+        let side2_cas: Vec<_> = sides[1].groups(&CONT_AMTS).collect();
+        assert_eq!(side2_cas.len(), 2);
+        assert_eq!(side2_cas[0].find(tag::CONT_AMT_VALUE).unwrap().value, b"5.00");
+        assert_eq!(side2_cas[0].find(tag::CONT_AMT_CURR).unwrap().value, b"EUR");
+        assert_eq!(side2_cas[1].find(tag::CONT_AMT_VALUE).unwrap().value, b"3.00");
+        assert_eq!(side2_cas[1].find(tag::CONT_AMT_CURR).unwrap().value, b"GBP");
+    }
+
+    #[test]
+    fn nested_group_two_different_nested_groups_in_same_parent() {
+        // SIDES=1, one side with NO_CONT_AMTS=1 and NO_MISC_FEES=1
+        let raw = fix("552=1|54=1|518=1|519=1|520=100.00|521=USD|136=1|137=10.00|138=EUR|139=1|");
+        let mut dec = Decoder::new();
+        let msg = dec.decode(&raw).unwrap();
+
+        let side = msg.groups(&SIDES).next().unwrap();
+
+        let cont_amts: Vec<_> = side.groups(&CONT_AMTS).collect();
+        assert_eq!(cont_amts.len(), 1);
+        assert_eq!(cont_amts[0].find(tag::CONT_AMT_VALUE).unwrap().value, b"100.00");
+        assert_eq!(cont_amts[0].find(tag::CONT_AMT_CURR).unwrap().value, b"USD");
+
+        let misc_fees: Vec<_> = side.groups(&MISC_FEES).collect();
+        assert_eq!(misc_fees.len(), 1);
+        assert_eq!(misc_fees[0].find(tag::MISC_FEE_AMT).unwrap().value, b"10.00");
+        assert_eq!(misc_fees[0].find(tag::MISC_FEE_CURR).unwrap().value, b"EUR");
+        assert_eq!(misc_fees[0].find(tag::MISC_FEE_TYPE).unwrap().value, b"1");
+    }
+
+    #[test]
+    fn nested_group_count_tag_absent_yields_empty() {
+        // SIDES=1, one side with no CONT_AMTS tag at all
+        let raw = fix("552=1|54=1|37=ORD1|");
+        let mut dec = Decoder::new();
+        let msg = dec.decode(&raw).unwrap();
+
+        let side = msg.groups(&SIDES).next().unwrap();
+        assert!(side.groups(&CONT_AMTS).next().is_none());
+    }
+
+    #[test]
+    fn nested_group_count_zero_yields_empty() {
+        // SIDES=1, one side with NO_CONT_AMTS=0
+        let raw = fix("552=1|54=1|37=ORD1|518=0|");
+        let mut dec = Decoder::new();
+        let msg = dec.decode(&raw).unwrap();
+
+        let side = msg.groups(&SIDES).next().unwrap();
+        assert!(side.groups(&CONT_AMTS).next().is_none());
+    }
+
+    #[test]
+    fn nested_group_iter_size_hint() {
+        // SIDES=1, one side with NO_CONT_AMTS=3
+        let raw = fix("552=1|54=1|518=3|519=1|520=10.00|519=2|520=20.00|519=3|520=30.00|");
+        let mut dec = Decoder::new();
+        let msg = dec.decode(&raw).unwrap();
+
+        let side = msg.groups(&SIDES).next().unwrap();
+        let mut nested = side.groups(&CONT_AMTS);
+        assert_eq!(nested.size_hint(), (3, Some(3)));
+        nested.next();
+        assert_eq!(nested.size_hint(), (2, Some(2)));
+        nested.next();
+        assert_eq!(nested.size_hint(), (1, Some(1)));
+        nested.next();
+        assert_eq!(nested.size_hint(), (0, Some(0)));
+        assert!(nested.next().is_none());
     }
 }
