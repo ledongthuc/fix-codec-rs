@@ -19,11 +19,15 @@ Tested with FIX version 4.2 and 4.4
 
 ## Installation
 
-Add to your `Cargo.toml`:
+```sh
+cargo add fix-codec-rs
+```
+
+Or add to your `Cargo.toml` manually:
 
 ```toml
 [dependencies]
-fix-codec-rs = { git = "https://github.com/ledongthuc/fix-codec-rs" }
+fix-codec-rs = "0.1.0"
 ```
 
 ## Usage

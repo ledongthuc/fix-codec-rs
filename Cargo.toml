@@ -1,6 +1,6 @@
 [package]
 name = "fix-codec-rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "High-performance FIX protocol encoder/decoder for low-latency trading systems"
 license = "MIT"
