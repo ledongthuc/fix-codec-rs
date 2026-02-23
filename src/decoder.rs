@@ -59,6 +59,10 @@ impl Decoder {
     /// (the offset slice) and from `buf` (the raw bytes). Drop `Message`
     /// before calling `decode` again.
     ///
+    /// The sorted tag index used by [`Message::find`] is built lazily on the
+    /// first `find()` call and cached for the message lifetime. If `find()` is
+    /// never called, no sort ever happens.
+    ///
     /// # Errors
     /// - `FixError::IncompleteMessage` — the buffer contains a partial field
     ///   (no `=` or no SOH delimiter found); buffer more bytes before retrying.
@@ -89,10 +93,7 @@ impl Decoder {
 
         // Both borrows are genuinely 'a: offsets from &'a mut self, buf from
         // &'a [u8]. No transmutes, no unsafe.
-        Ok(Message {
-            buf,
-            offsets: self.offsets.as_slice(),
-        })
+        Ok(Message::new(buf, self.offsets.as_slice()))
     }
 }
 

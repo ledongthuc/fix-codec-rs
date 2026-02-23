@@ -95,7 +95,8 @@ impl Encoder {
             {
                 continue;
             }
-            self.body.extend_from_slice(field.tag.to_string().as_bytes());
+            let (digits, pos) = u32_to_ascii(field.tag);
+            self.body.extend_from_slice(&digits[pos..]);
             self.body.push(b'=');
             self.body.extend_from_slice(field.value);
             self.body.push(FIELD_SEPARATOR);
@@ -116,7 +117,8 @@ impl Encoder {
             }
         } else {
             out.extend_from_slice(b"9=");
-            out.extend_from_slice(self.body.len().to_string().as_bytes());
+            let (digits, pos) = u32_to_ascii(self.body.len() as u32);
+            out.extend_from_slice(&digits[pos..]);
             out.push(FIELD_SEPARATOR);
         }
 
@@ -131,12 +133,37 @@ impl Encoder {
         } else {
             let checksum = compute_checksum(out);
             out.extend_from_slice(b"10=");
-            out.extend_from_slice(format!("{:03}", checksum).as_bytes());
+            out.extend_from_slice(&checksum_to_ascii(checksum));
             out.push(FIELD_SEPARATOR);
         }
 
         Ok(())
     }
+}
+
+/// Write the decimal digits of `n` (no leading zeros) into `buf` as ASCII bytes.
+/// Uses a stack buffer — no heap allocation.
+#[inline]
+fn u32_to_ascii(n: u32) -> ([u8; 10], usize) {
+    let mut buf = [0u8; 10];
+    let mut pos = 10usize;
+    let mut v = n;
+    loop {
+        pos -= 1;
+        buf[pos] = b'0' + (v % 10) as u8;
+        v /= 10;
+        if v == 0 {
+            break;
+        }
+    }
+    (buf, pos)
+}
+
+/// Write `n` as a zero-padded 3-digit ASCII decimal (for FIX CheckSum tag 10).
+/// No heap allocation.
+#[inline]
+fn checksum_to_ascii(n: u8) -> [u8; 3] {
+    [b'0' + n / 100, b'0' + (n / 10) % 10, b'0' + n % 10]
 }
 
 #[cfg(test)]

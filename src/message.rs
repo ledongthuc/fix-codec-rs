@@ -1,3 +1,7 @@
+use std::cell::OnceCell;
+
+use smallvec::SmallVec;
+
 use crate::body_length::parse_body_length;
 use crate::checksum::{compute_checksum, parse_checksum};
 use crate::error::FixError;
@@ -5,11 +9,17 @@ use crate::field::Field;
 use crate::group::{parse_count, GroupIter, GroupSpec, FIX42_GROUPS, FIX44_GROUPS};
 use crate::tag::{self, Tag};
 
+/// Default inline capacity for the sorted index — matches the decoder's field capacity.
+const SORTED_CAPACITY: usize = 32;
+
 /// A decoded FIX message.
 ///
-/// Zero-allocation, zero-copy: both fields borrow directly from the `Decoder`
-/// and the original input slice. The lifetime `'a` ties this `Message` to
-/// both sources so no data is copied or heap-allocated.
+/// Zero-copy: field values are sub-slices of the original input buffer — no
+/// bytes are copied when accessing fields.
+///
+/// The sorted tag index for [`find`] is built lazily on the first call and
+/// cached for the lifetime of the message. This means `decode()` pays no sort
+/// cost when you never call `find()`, and pays it at most once when you do.
 #[derive(Debug)]
 pub struct Message<'a> {
     /// The raw bytes of the complete FIX message as received (e.g. the network
@@ -28,9 +38,27 @@ pub struct Message<'a> {
     /// The slice is borrowed from the `Decoder`'s internal `SmallVec`, so it
     /// lives as long as `'a`.
     pub(crate) offsets: &'a [(Tag, u32, u32)],
+
+    /// Sorted (tag, offsets_index) pairs for O(log n) binary search in find().
+    ///
+    /// Built lazily on the first call to `find()` and cached for the lifetime
+    /// of the message via `OnceCell`. Never allocated if `find()` is never
+    /// called, and built at most once regardless of how many times `find()` is
+    /// called.
+    sorted: OnceCell<SmallVec<[(Tag, u16); SORTED_CAPACITY]>>,
 }
 
 impl<'a> Message<'a> {
+    /// Create a new message from a buffer and an offset slice.
+    /// The sorted index starts uninitialized and is built lazily on first find().
+    pub(crate) fn new(buf: &'a [u8], offsets: &'a [(Tag, u32, u32)]) -> Self {
+        Self {
+            buf,
+            offsets,
+            sorted: OnceCell::new(),
+        }
+    }
+
     /// Number of fields in the message.
     #[inline]
     pub fn len(&self) -> usize {
@@ -74,15 +102,32 @@ impl<'a> Message<'a> {
     }
 
     /// Find the first field with the given tag, or `None` if not present.
+    ///
+    /// The sorted index is built lazily on the first call (O(n log n)) and
+    /// cached for subsequent calls (O(log n) binary search). If `find()` is
+    /// never called, the sort never happens.
     #[inline]
     pub fn find(&self, tag: Tag) -> Option<Field<'a>> {
-        self.offsets
-            .iter()
-            .find(|&&(t, _, _)| t == tag)
-            .map(|&(t, start, end)| Field {
-                tag: t,
-                value: &self.buf[start as usize..end as usize],
-            })
+        let sorted = self.sorted.get_or_init(|| {
+            let mut v: SmallVec<[(Tag, u16); SORTED_CAPACITY]> =
+                SmallVec::with_capacity(self.offsets.len());
+            for (i, &(t, _, _)) in self.offsets.iter().enumerate() {
+                v.push((t, i as u16));
+            }
+            v.sort_unstable_by_key(|&(t, _)| t);
+            v
+        });
+
+        let idx = sorted.partition_point(|&(t, _)| t < tag);
+        let &(found_tag, offset_idx) = sorted.get(idx)?;
+        if found_tag != tag {
+            return None;
+        }
+        let (t, start, end) = self.offsets[offset_idx as usize];
+        Some(Field {
+            tag: t,
+            value: &self.buf[start as usize..end as usize],
+        })
     }
 
     /// Return an iterator over the instances of the repeating group described
