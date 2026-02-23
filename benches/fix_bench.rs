@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use fix_rs::decoder::Decoder;
-use fix_rs::encoder::Encoder;
+use fix_codec_rs::decoder::Decoder;
+use fix_codec_rs::encoder::Encoder;
 
 // ---------------------------------------------------------------------------
 // Benchmark inputs
@@ -57,74 +57,6 @@ fn bench_decode(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
-// decode_fast() vs decode(): direct comparison
-// ---------------------------------------------------------------------------
-
-fn bench_decode_fast(c: &mut Criterion) {
-    use fix_rs::tag;
-
-    let mut group = c.benchmark_group("decode_fast_vs_decode");
-
-    for (name, msg_bytes) in [
-        ("order_8fields", MSG_ORDER),
-        ("exec_report_12fields", MSG_EXEC),
-        ("market_data_20fields", MSG_MARKET_DATA),
-    ] {
-        group.throughput(Throughput::Bytes(msg_bytes.len() as u64));
-
-        // decode_fast: no sorted index, pure parse only.
-        let fast_label = format!("decode_fast/{}", name);
-        group.bench_function(&fast_label, |b| {
-            let mut dec = Decoder::new();
-            b.iter(|| {
-                let msg = dec.decode_fast(black_box(msg_bytes)).unwrap();
-                black_box(msg.len())
-            });
-        });
-
-        // decode: parse + build sorted index.
-        let full_label = format!("decode/{}", name);
-        group.bench_function(&full_label, |b| {
-            let mut dec = Decoder::new();
-            b.iter(|| {
-                let msg = dec.decode(black_box(msg_bytes)).unwrap();
-                black_box(msg.len())
-            });
-        });
-
-        // decode_fast + find() calls: linear scan pays off at low find counts.
-        let fast_find_label = format!("decode_fast+4finds/{}", name);
-        group.bench_function(&fast_find_label, |b| {
-            let mut dec = Decoder::new();
-            b.iter(|| {
-                let msg = dec.decode_fast(black_box(msg_bytes)).unwrap();
-                let a = msg.find(tag::SYMBOL).map(|f| f.value.len()).unwrap_or(0);
-                let b_ = msg.find(tag::SIDE).map(|f| f.value.len()).unwrap_or(0);
-                let c_ = msg.find(tag::ORDER_QTY).map(|f| f.value.len()).unwrap_or(0);
-                let d = msg.find(tag::PRICE).map(|f| f.value.len()).unwrap_or(0);
-                black_box(a + b_ + c_ + d)
-            });
-        });
-
-        // decode + find() calls: binary search.
-        let full_find_label = format!("decode+4finds/{}", name);
-        group.bench_function(&full_find_label, |b| {
-            let mut dec = Decoder::new();
-            b.iter(|| {
-                let msg = dec.decode(black_box(msg_bytes)).unwrap();
-                let a = msg.find(tag::SYMBOL).map(|f| f.value.len()).unwrap_or(0);
-                let b_ = msg.find(tag::SIDE).map(|f| f.value.len()).unwrap_or(0);
-                let c_ = msg.find(tag::ORDER_QTY).map(|f| f.value.len()).unwrap_or(0);
-                let d = msg.find(tag::PRICE).map(|f| f.value.len()).unwrap_or(0);
-                black_box(a + b_ + c_ + d)
-            });
-        });
-    }
-
-    group.finish();
-}
-
-// ---------------------------------------------------------------------------
 // Sorted-index cost/benefit: how many find() calls does it take to break even?
 //
 // The sorted_index is built on every decode() call — it costs time even when
@@ -137,7 +69,7 @@ fn bench_decode_fast(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_sorted_vs_linear(c: &mut Criterion) {
-    use fix_rs::tag;
+    use fix_codec_rs::tag;
 
     // Use the exec-report message (14 fields) as the representative case.
     // It's large enough that the sort cost and the linear-scan savings are both visible.
@@ -224,7 +156,7 @@ fn bench_sorted_vs_linear(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_decode_and_find(c: &mut Criterion) {
-    use fix_rs::tag;
+    use fix_codec_rs::tag;
 
     let mut group = c.benchmark_group("decode_and_find");
 
@@ -247,7 +179,7 @@ fn bench_decode_and_find(c: &mut Criterion) {
     // MarketData: decode + read all MD entry prices via group iteration.
     group.throughput(Throughput::Bytes(MSG_MARKET_DATA.len() as u64));
     group.bench_function("market_data_iterate_entries", |b| {
-        use fix_rs::group;
+        use fix_codec_rs::group;
         let mut dec = Decoder::new();
         b.iter(|| {
             let msg = dec.decode(black_box(MSG_MARKET_DATA)).unwrap();
@@ -329,7 +261,6 @@ fn bench_roundtrip(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_decode,
-    bench_decode_fast,
     bench_decode_and_find,
     bench_encode,
     bench_roundtrip,

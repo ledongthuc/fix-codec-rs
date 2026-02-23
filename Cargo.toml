@@ -1,5 +1,5 @@
 [package]
-name = "fix-rs"
+name = "fix-codec-rs"
 version = "0.1.0"
 edition = "2024"
 

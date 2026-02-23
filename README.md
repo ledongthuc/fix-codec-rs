@@ -1,4 +1,4 @@
-# fix-rs
+# fix-codec-rs
 
 A high-performance FIX (Financial Information Exchange) protocol encoder/decoder library written in Rust, designed for HFT and low-latency trading systems.
 
@@ -23,7 +23,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fix-rs = { git = "https://github.com/ledongthuc/fix-rs" }
+fix-codec-rs = { git = "https://github.com/ledongthuc/fix-codec-rs" }
 ```
 
 ## Usage
@@ -31,8 +31,8 @@ fix-rs = { git = "https://github.com/ledongthuc/fix-rs" }
 ### Decoding
 
 ```rust
-use fix_rs::decoder::Decoder;
-use fix_rs::tag;
+use fix_codec_rs::decoder::Decoder;
+use fix_codec_rs::tag;
 
 fn main() {
     // Create a reusable decoder — allocate once, reuse across messages
@@ -61,7 +61,7 @@ fn main() {
 ### Decoding with Validation
 
 ```rust
-use fix_rs::decoder::Decoder;
+use fix_codec_rs::decoder::Decoder;
 
 let mut decoder = Decoder::new();
 let raw = b"8=FIX.4.2\x019=73\x0135=D\x0149=CLIENT\x0156=BROKER\x0134=1\x0152=20240101-12:00:00\x0111=ORD001\x0155=AAPL\x0154=1\x0138=100\x0144=150.00\x0140=2\x0110=128\x01";
@@ -76,8 +76,8 @@ msg.validate_checksum().unwrap();
 ### Encoding
 
 ```rust
-use fix_rs::decoder::Decoder;
-use fix_rs::encoder::Encoder;
+use fix_codec_rs::decoder::Decoder;
+use fix_codec_rs::encoder::Encoder;
 
 let mut decoder = Decoder::new();
 let mut encoder = Encoder::new();
@@ -94,7 +94,7 @@ encoder.encode(&msg, &mut out).unwrap();
 ### Encoding with Auto-Calculation Disabled
 
 ```rust
-use fix_rs::encoder::Encoder;
+use fix_codec_rs::encoder::Encoder;
 
 let mut encoder = Encoder::new();
 
@@ -106,8 +106,8 @@ encoder.disable_auto_calculate_checksum(true);
 ### Pre-sizing for Large Messages
 
 ```rust
-use fix_rs::decoder::Decoder;
-use fix_rs::encoder::Encoder;
+use fix_codec_rs::decoder::Decoder;
+use fix_codec_rs::encoder::Encoder;
 
 // Pre-allocate for messages with up to 64 fields (avoids reallocation)
 let mut decoder = Decoder::with_capacity(64);
@@ -119,9 +119,9 @@ let mut encoder = Encoder::with_capacity(1024);
 ### Repeating Groups
 
 ```rust
-use fix_rs::decoder::Decoder;
-use fix_rs::group;
-use fix_rs::tag;
+use fix_codec_rs::decoder::Decoder;
+use fix_codec_rs::group;
+use fix_codec_rs::tag;
 
 let mut decoder = Decoder::new();
 
@@ -144,9 +144,9 @@ for entry in msg.groups(&group::fix42::MD_ENTRIES) {
 ### Nested Groups
 
 ```rust
-use fix_rs::decoder::Decoder;
-use fix_rs::group;
-use fix_rs::tag;
+use fix_codec_rs::decoder::Decoder;
+use fix_codec_rs::group;
+use fix_codec_rs::tag;
 
 let mut decoder = Decoder::new();
 let raw = b"8=FIX.4.4\x019=...\x0135=AE\x01453=2\x01448=FIRM_A\x01447=D\x01452=1\x01539=1\x01524=TRADER1\x01448=FIRM_B\x01447=D\x01452=2\x0110=000\x01";
@@ -169,8 +169,8 @@ for party in msg.groups(&group::fix44::PARTY_IDS) {
 ### Custom Group Spec
 
 ```rust
-use fix_rs::group::GroupSpec;
-use fix_rs::tag;
+use fix_codec_rs::group::GroupSpec;
+use fix_codec_rs::tag;
 
 // Define a custom repeating group
 const MY_GROUP: GroupSpec = GroupSpec {
@@ -247,7 +247,7 @@ open target/criterion/report/index.html
 | FIX 4.2 | 450+ tags   | 19 groups   |
 | FIX 4.4 | 500+ tags   | 37 groups   |
 
-Tag constants are in `fix_rs::tag`. Group specs are in `fix_rs::group::fix42` and `fix_rs::group::fix44`.
+Tag constants are in `fix_codec_rs::tag`. Group specs are in `fix_codec_rs::group::fix42` and `fix_codec_rs::group::fix44`.
 
 ## Dev Setup
 
@@ -258,8 +258,8 @@ Tag constants are in `fix_rs::tag`. Group specs are in `fix_rs::group::fix42` an
 ### Clone and build
 
 ```sh
-git clone https://github.com/ledongthuc/fix-rs
-cd fix-rs
+git clone https://github.com/ledongthuc/fix-codec-rs
+cd fix-codec-rs
 cargo build
 ```
 
