@@ -102,7 +102,12 @@ pub const DLVY_INST: GroupSpec = GroupSpec {
 pub const EXECS: GroupSpec = GroupSpec {
     count_tag: tag::NO_EXECS,
     delimiter_tag: tag::EXEC_ID,
-    member_tags: &[tag::EXEC_ID, tag::LAST_SHARES, tag::LAST_PX, tag::LAST_CAPACITY],
+    member_tags: &[
+        tag::EXEC_ID,
+        tag::LAST_SHARES,
+        tag::LAST_PX,
+        tag::LAST_CAPACITY,
+    ],
 };
 
 /// NO_MISC_FEES (136) — MiscFeeAmt is the delimiter tag.
@@ -348,7 +353,12 @@ pub const STRIKES: GroupSpec = GroupSpec {
 pub const PARTY_IDS: GroupSpec = GroupSpec {
     count_tag: tag::NO_PARTY_IDS,
     delimiter_tag: tag::PARTY_ID,
-    member_tags: &[tag::PARTY_ID, tag::PARTY_ID_SOURCE, tag::PARTY_ROLE, tag::PARTY_SUB_ID],
+    member_tags: &[
+        tag::PARTY_ID,
+        tag::PARTY_ID_SOURCE,
+        tag::PARTY_ROLE,
+        tag::PARTY_SUB_ID,
+    ],
 };
 
 /// NO_SECURITY_ALT_ID (454) — SecurityAltID is the delimiter tag.
@@ -362,7 +372,10 @@ pub const SECURITY_ALT_IDS: GroupSpec = GroupSpec {
 pub const UNDERLYING_SECURITY_ALT_IDS: GroupSpec = GroupSpec {
     count_tag: tag::NO_UNDERLYING_SECURITY_ALT_ID,
     delimiter_tag: tag::UNDERLYING_SECURITY_ALT_ID,
-    member_tags: &[tag::UNDERLYING_SECURITY_ALT_ID, tag::UNDERLYING_SECURITY_ALT_ID_SOURCE],
+    member_tags: &[
+        tag::UNDERLYING_SECURITY_ALT_ID,
+        tag::UNDERLYING_SECURITY_ALT_ID_SOURCE,
+    ],
 };
 
 /// NO_REGIST_DTLS (473) — MailingDtls is the delimiter tag.
@@ -635,7 +648,12 @@ pub const UNDERLYINGS: GroupSpec = GroupSpec {
 pub const POSITIONS: GroupSpec = GroupSpec {
     count_tag: tag::NO_POSITIONS,
     delimiter_tag: tag::POS_TYPE,
-    member_tags: &[tag::POS_TYPE, tag::LONG_QTY, tag::SHORT_QTY, tag::POS_QTY_STATUS],
+    member_tags: &[
+        tag::POS_TYPE,
+        tag::LONG_QTY,
+        tag::SHORT_QTY,
+        tag::POS_QTY_STATUS,
+    ],
 };
 
 /// NO_QUOTE_QUALIFIERS (735) — QuoteQualifier is the delimiter tag.
@@ -744,7 +762,12 @@ pub const CAPACITIES: GroupSpec = GroupSpec {
 pub const EVENTS: GroupSpec = GroupSpec {
     count_tag: tag::NO_EVENTS,
     delimiter_tag: tag::EVENT_TYPE,
-    member_tags: &[tag::EVENT_TYPE, tag::EVENT_DATE, tag::EVENT_PX, tag::EVENT_TEXT],
+    member_tags: &[
+        tag::EVENT_TYPE,
+        tag::EVENT_DATE,
+        tag::EVENT_PX,
+        tag::EVENT_TEXT,
+    ],
 };
 
 /// NO_INSTR_ATTRIB (870) — InstrAttribType is the delimiter tag.
@@ -1079,7 +1102,7 @@ impl<'a> Iterator for GroupIter<'a> {
 pub(crate) fn parse_count(bytes: &[u8]) -> usize {
     let mut n: usize = 0;
     for &b in bytes {
-        if b < b'0' || b > b'9' {
+        if !b.is_ascii_digit() {
             return 0;
         }
         n = n.wrapping_mul(10).wrapping_add((b - b'0') as usize);
@@ -1099,7 +1122,9 @@ mod tests {
 
     // Helper: build a raw FIX byte string from "tag=value|..." notation using '|' as SOH.
     fn fix(s: &str) -> Vec<u8> {
-        s.bytes().map(|b| if b == b'|' { 0x01 } else { b }).collect()
+        s.bytes()
+            .map(|b| if b == b'|' { 0x01 } else { b })
+            .collect()
     }
 
     // -----------------------------------------------------------------------
@@ -1206,7 +1231,10 @@ mod tests {
 
         let g = msg.groups(&MISC_FEES).next().unwrap();
         let tags: Vec<Tag> = g.fields().map(|f| f.tag).collect();
-        assert_eq!(tags, vec![tag::MISC_FEE_AMT, tag::MISC_FEE_CURR, tag::MISC_FEE_TYPE]);
+        assert_eq!(
+            tags,
+            vec![tag::MISC_FEE_AMT, tag::MISC_FEE_CURR, tag::MISC_FEE_TYPE]
+        );
     }
 
     #[test]
@@ -1247,9 +1275,7 @@ mod tests {
     #[test]
     fn md_entries_two_instances() {
         // MDReqID + NO_MD_ENTRIES=2 + 2 entries each with MDEntryType/MDEntryPx/MDEntrySize
-        let raw = fix(
-            "262=REQ1|268=2|269=0|270=100.50|271=500|269=1|270=100.75|271=300|",
-        );
+        let raw = fix("262=REQ1|268=2|269=0|270=100.50|271=500|269=1|270=100.75|271=300|");
         let mut dec = Decoder::new();
         let msg = dec.decode(&raw).unwrap();
 
@@ -1274,7 +1300,8 @@ mod tests {
     #[test]
     fn multiple_group_types_in_message() {
         // A message with both NO_MISC_FEES and NO_ROUTING_IDS
-        let raw = fix("35=D|136=1|137=1.50|138=USD|139=4|215=2|216=1|217=ROUTE_A|216=2|217=ROUTE_B|");
+        let raw =
+            fix("35=D|136=1|137=1.50|138=USD|139=4|215=2|216=1|217=ROUTE_A|216=2|217=ROUTE_B|");
         let mut dec = Decoder::new();
         let msg = dec.decode(&raw).unwrap();
 
@@ -1340,21 +1367,25 @@ mod tests {
         let cont_amts: Vec<_> = side.groups(&CONT_AMTS).collect();
         assert_eq!(cont_amts.len(), 2);
         assert_eq!(cont_amts[0].find(tag::CONT_AMT_TYPE).unwrap().value, b"1");
-        assert_eq!(cont_amts[0].find(tag::CONT_AMT_VALUE).unwrap().value, b"100.00");
+        assert_eq!(
+            cont_amts[0].find(tag::CONT_AMT_VALUE).unwrap().value,
+            b"100.00"
+        );
         assert_eq!(cont_amts[0].find(tag::CONT_AMT_CURR).unwrap().value, b"USD");
         assert_eq!(cont_amts[1].find(tag::CONT_AMT_TYPE).unwrap().value, b"2");
-        assert_eq!(cont_amts[1].find(tag::CONT_AMT_VALUE).unwrap().value, b"50.00");
+        assert_eq!(
+            cont_amts[1].find(tag::CONT_AMT_VALUE).unwrap().value,
+            b"50.00"
+        );
         assert_eq!(cont_amts[1].find(tag::CONT_AMT_CURR).unwrap().value, b"EUR");
     }
 
     #[test]
     fn nested_group_multiple_parents_each_with_children() {
         // SIDES=2: side1 has 1 CONT_AMT, side2 has 2 CONT_AMTs — critical boundary test
-        let raw = fix(
-            "552=2|\
+        let raw = fix("552=2|\
              54=1|518=1|519=1|520=100.00|521=USD|\
-             54=2|518=2|519=1|520=5.00|521=EUR|519=2|520=3.00|521=GBP|",
-        );
+             54=2|518=2|519=1|520=5.00|521=EUR|519=2|520=3.00|521=GBP|");
         let mut dec = Decoder::new();
         let msg = dec.decode(&raw).unwrap();
 
@@ -1363,14 +1394,23 @@ mod tests {
 
         let side1_cas: Vec<_> = sides[0].groups(&CONT_AMTS).collect();
         assert_eq!(side1_cas.len(), 1);
-        assert_eq!(side1_cas[0].find(tag::CONT_AMT_VALUE).unwrap().value, b"100.00");
+        assert_eq!(
+            side1_cas[0].find(tag::CONT_AMT_VALUE).unwrap().value,
+            b"100.00"
+        );
         assert_eq!(side1_cas[0].find(tag::CONT_AMT_CURR).unwrap().value, b"USD");
 
         let side2_cas: Vec<_> = sides[1].groups(&CONT_AMTS).collect();
         assert_eq!(side2_cas.len(), 2);
-        assert_eq!(side2_cas[0].find(tag::CONT_AMT_VALUE).unwrap().value, b"5.00");
+        assert_eq!(
+            side2_cas[0].find(tag::CONT_AMT_VALUE).unwrap().value,
+            b"5.00"
+        );
         assert_eq!(side2_cas[0].find(tag::CONT_AMT_CURR).unwrap().value, b"EUR");
-        assert_eq!(side2_cas[1].find(tag::CONT_AMT_VALUE).unwrap().value, b"3.00");
+        assert_eq!(
+            side2_cas[1].find(tag::CONT_AMT_VALUE).unwrap().value,
+            b"3.00"
+        );
         assert_eq!(side2_cas[1].find(tag::CONT_AMT_CURR).unwrap().value, b"GBP");
     }
 
@@ -1385,12 +1425,18 @@ mod tests {
 
         let cont_amts: Vec<_> = side.groups(&CONT_AMTS).collect();
         assert_eq!(cont_amts.len(), 1);
-        assert_eq!(cont_amts[0].find(tag::CONT_AMT_VALUE).unwrap().value, b"100.00");
+        assert_eq!(
+            cont_amts[0].find(tag::CONT_AMT_VALUE).unwrap().value,
+            b"100.00"
+        );
         assert_eq!(cont_amts[0].find(tag::CONT_AMT_CURR).unwrap().value, b"USD");
 
         let misc_fees: Vec<_> = side.groups(&MISC_FEES).collect();
         assert_eq!(misc_fees.len(), 1);
-        assert_eq!(misc_fees[0].find(tag::MISC_FEE_AMT).unwrap().value, b"10.00");
+        assert_eq!(
+            misc_fees[0].find(tag::MISC_FEE_AMT).unwrap().value,
+            b"10.00"
+        );
         assert_eq!(misc_fees[0].find(tag::MISC_FEE_CURR).unwrap().value, b"EUR");
         assert_eq!(misc_fees[0].find(tag::MISC_FEE_TYPE).unwrap().value, b"1");
     }

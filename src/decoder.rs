@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 use crate::error::FixError;
 use crate::field::{FIELD_KEY_VALUE_SEPARATOR, FIELD_SEPARATOR};
 use crate::message::Message;
-use crate::tag::{parse_tag, Tag};
+use crate::tag::{Tag, parse_tag};
 
 /// Default inline capacity: covers ~95% of FIX messages without heap spill.
 const DEFAULT_CAPACITY: usize = 32;
@@ -34,6 +34,12 @@ pub struct Decoder {
     /// clear() at the start of each decode call preserves allocated capacity —
     /// no free/malloc on the hot path.
     offsets: SmallVec<[(Tag, u32, u32); DEFAULT_CAPACITY]>,
+}
+
+impl Default for Decoder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Decoder {
@@ -83,10 +89,12 @@ impl Decoder {
             // SIMD scan for SOH (0x01) — delimits end of value
             let soh_pos = memchr(FIELD_SEPARATOR, &buf[eq_pos + 1..])
                 .ok_or(FixError::IncompleteMessage)?
-                + eq_pos + 1;
+                + eq_pos
+                + 1;
 
             // Store byte offsets — plain integers, no lifetimes, no unsafe needed.
-            self.offsets.push((tag, (eq_pos + 1) as u32, soh_pos as u32));
+            self.offsets
+                .push((tag, (eq_pos + 1) as u32, soh_pos as u32));
 
             pos = soh_pos + 1;
         }
@@ -467,7 +475,9 @@ mod tests {
     #[test]
     fn with_capacity_exact_fit() {
         let mut dec = Decoder::with_capacity(4);
-        let msg = dec.decode(b"8=FIX.4.2\x0135=D\x0149=A\x0156=B\x01").unwrap();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x0135=D\x0149=A\x0156=B\x01")
+            .unwrap();
         assert_eq!(msg.len(), 4);
         assert_eq!(msg.field(3).tag, 56);
         assert_eq!(msg.field(3).value, b"B");
@@ -502,8 +512,14 @@ mod tests {
 
         let fees: Vec<_> = msg.groups(&group::MISC_FEES).collect();
         assert_eq!(fees.len(), 1);
-        assert_eq!(fees[0].find(crate::tag::MISC_FEE_AMT).unwrap().value, b"10.50");
-        assert_eq!(fees[0].find(crate::tag::MISC_FEE_CURR).unwrap().value, b"USD");
+        assert_eq!(
+            fees[0].find(crate::tag::MISC_FEE_AMT).unwrap().value,
+            b"10.50"
+        );
+        assert_eq!(
+            fees[0].find(crate::tag::MISC_FEE_CURR).unwrap().value,
+            b"USD"
+        );
         assert_eq!(fees[0].find(crate::tag::MISC_FEE_TYPE).unwrap().value, b"4");
     }
 
@@ -521,12 +537,24 @@ mod tests {
         let fees: Vec<_> = msg.groups(&group::MISC_FEES).collect();
         assert_eq!(fees.len(), 2);
 
-        assert_eq!(fees[0].find(crate::tag::MISC_FEE_AMT).unwrap().value, b"5.00");
-        assert_eq!(fees[0].find(crate::tag::MISC_FEE_CURR).unwrap().value, b"USD");
+        assert_eq!(
+            fees[0].find(crate::tag::MISC_FEE_AMT).unwrap().value,
+            b"5.00"
+        );
+        assert_eq!(
+            fees[0].find(crate::tag::MISC_FEE_CURR).unwrap().value,
+            b"USD"
+        );
         assert_eq!(fees[0].find(crate::tag::MISC_FEE_TYPE).unwrap().value, b"1");
 
-        assert_eq!(fees[1].find(crate::tag::MISC_FEE_AMT).unwrap().value, b"2.50");
-        assert_eq!(fees[1].find(crate::tag::MISC_FEE_CURR).unwrap().value, b"EUR");
+        assert_eq!(
+            fees[1].find(crate::tag::MISC_FEE_AMT).unwrap().value,
+            b"2.50"
+        );
+        assert_eq!(
+            fees[1].find(crate::tag::MISC_FEE_CURR).unwrap().value,
+            b"EUR"
+        );
         assert_eq!(fees[1].find(crate::tag::MISC_FEE_TYPE).unwrap().value, b"2");
     }
 
@@ -548,14 +576,32 @@ mod tests {
         assert_eq!(entries.len(), 2);
 
         // Bid (MDEntryType=0)
-        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_TYPE).unwrap().value, b"0");
-        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_PX).unwrap().value, b"99.50");
-        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_SIZE).unwrap().value, b"1000");
+        assert_eq!(
+            entries[0].find(crate::tag::MD_ENTRY_TYPE).unwrap().value,
+            b"0"
+        );
+        assert_eq!(
+            entries[0].find(crate::tag::MD_ENTRY_PX).unwrap().value,
+            b"99.50"
+        );
+        assert_eq!(
+            entries[0].find(crate::tag::MD_ENTRY_SIZE).unwrap().value,
+            b"1000"
+        );
 
         // Offer (MDEntryType=1)
-        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_TYPE).unwrap().value, b"1");
-        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_PX).unwrap().value, b"99.75");
-        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_SIZE).unwrap().value, b"500");
+        assert_eq!(
+            entries[1].find(crate::tag::MD_ENTRY_TYPE).unwrap().value,
+            b"1"
+        );
+        assert_eq!(
+            entries[1].find(crate::tag::MD_ENTRY_PX).unwrap().value,
+            b"99.75"
+        );
+        assert_eq!(
+            entries[1].find(crate::tag::MD_ENTRY_SIZE).unwrap().value,
+            b"500"
+        );
     }
 
     #[test]
@@ -569,10 +615,22 @@ mod tests {
 
         let routes: Vec<_> = msg.groups(&group::ROUTING_IDS).collect();
         assert_eq!(routes.len(), 2);
-        assert_eq!(routes[0].find(crate::tag::ROUTING_TYPE).unwrap().value, b"1");
-        assert_eq!(routes[0].find(crate::tag::ROUTING_ID).unwrap().value, b"ROUTE_A");
-        assert_eq!(routes[1].find(crate::tag::ROUTING_TYPE).unwrap().value, b"2");
-        assert_eq!(routes[1].find(crate::tag::ROUTING_ID).unwrap().value, b"ROUTE_B");
+        assert_eq!(
+            routes[0].find(crate::tag::ROUTING_TYPE).unwrap().value,
+            b"1"
+        );
+        assert_eq!(
+            routes[0].find(crate::tag::ROUTING_ID).unwrap().value,
+            b"ROUTE_A"
+        );
+        assert_eq!(
+            routes[1].find(crate::tag::ROUTING_TYPE).unwrap().value,
+            b"2"
+        );
+        assert_eq!(
+            routes[1].find(crate::tag::ROUTING_ID).unwrap().value,
+            b"ROUTE_B"
+        );
     }
 
     #[test]
@@ -688,10 +746,22 @@ mod tests {
 
         let entries: Vec<_> = instances.collect();
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_TYPE).unwrap().value, b"0");
-        assert_eq!(entries[0].find(crate::tag::MD_ENTRY_PX).unwrap().value, b"50.00");
-        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_TYPE).unwrap().value, b"1");
-        assert_eq!(entries[1].find(crate::tag::MD_ENTRY_PX).unwrap().value, b"50.25");
+        assert_eq!(
+            entries[0].find(crate::tag::MD_ENTRY_TYPE).unwrap().value,
+            b"0"
+        );
+        assert_eq!(
+            entries[0].find(crate::tag::MD_ENTRY_PX).unwrap().value,
+            b"50.00"
+        );
+        assert_eq!(
+            entries[1].find(crate::tag::MD_ENTRY_TYPE).unwrap().value,
+            b"1"
+        );
+        assert_eq!(
+            entries[1].find(crate::tag::MD_ENTRY_PX).unwrap().value,
+            b"50.25"
+        );
 
         assert!(all.next().is_none());
     }
@@ -708,7 +778,9 @@ mod tests {
         // "8=FIX.4.2\x019=5\x0135=D\x0110=181\x01"
         // Body = "35=D\x01" = 5 bytes. Declared 9=5. Should pass.
         let mut dec = Decoder::new();
-        let msg = dec.decode(b"8=FIX.4.2\x019=5\x0135=D\x0110=181\x01").unwrap();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x019=5\x0135=D\x0110=181\x01")
+            .unwrap();
         assert!(msg.validate_body_length().is_ok());
     }
 
@@ -716,7 +788,9 @@ mod tests {
     fn validate_body_length_wrong_value() {
         // Declared 9=99 but actual body is 5 bytes. Should fail.
         let mut dec = Decoder::new();
-        let msg = dec.decode(b"8=FIX.4.2\x019=99\x0135=D\x0110=000\x01").unwrap();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x019=99\x0135=D\x0110=000\x01")
+            .unwrap();
         assert!(matches!(
             msg.validate_body_length().unwrap_err(),
             FixError::InvalidBodyLength
@@ -749,7 +823,9 @@ mod tests {
     fn validate_body_length_tag9_not_second_field() {
         // Tag 9 is not in position 1 — invalid message structure.
         let mut dec = Decoder::new();
-        let msg = dec.decode(b"8=FIX.4.2\x0135=D\x019=5\x0110=000\x01").unwrap();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x0135=D\x019=5\x0110=000\x01")
+            .unwrap();
         assert!(matches!(
             msg.validate_body_length().unwrap_err(),
             FixError::InvalidBodyLength
@@ -760,7 +836,9 @@ mod tests {
     fn validate_body_length_tag10_not_last_field() {
         // Tag 10 is not the last field — invalid message structure.
         let mut dec = Decoder::new();
-        let msg = dec.decode(b"8=FIX.4.2\x019=5\x0110=000\x0135=D\x01").unwrap();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x019=5\x0110=000\x0135=D\x01")
+            .unwrap();
         assert!(matches!(
             msg.validate_body_length().unwrap_err(),
             FixError::InvalidBodyLength
@@ -772,7 +850,9 @@ mod tests {
         // "8=FIX.4.2\x019=5\x0135=D\x0110=181\x01"
         // sum("8=FIX.4.2\x019=5\x0135=D\x01") % 256 = 181
         let mut dec = Decoder::new();
-        let msg = dec.decode(b"8=FIX.4.2\x019=5\x0135=D\x0110=181\x01").unwrap();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x019=5\x0135=D\x0110=181\x01")
+            .unwrap();
         assert!(msg.validate_checksum().is_ok());
     }
 
@@ -780,7 +860,9 @@ mod tests {
     fn validate_checksum_wrong_value() {
         // Correct message bytes but checksum declared as 000 instead of 181.
         let mut dec = Decoder::new();
-        let msg = dec.decode(b"8=FIX.4.2\x019=5\x0135=D\x0110=000\x01").unwrap();
+        let msg = dec
+            .decode(b"8=FIX.4.2\x019=5\x0135=D\x0110=000\x01")
+            .unwrap();
         assert!(matches!(
             msg.validate_checksum().unwrap_err(),
             FixError::InvalidCheckSum

@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use fix_codec_rs::decoder::Decoder;
 use fix_codec_rs::encoder::Encoder;
 
@@ -10,21 +10,18 @@ use fix_codec_rs::encoder::Encoder;
 const MSG_TINY: &[u8] = b"8=FIX.4.2\x019=5\x0135=D\x0110=181\x01";
 
 /// Typical order message: 8 body fields (NewOrderSingle-like).
-const MSG_ORDER: &[u8] =
-    b"8=FIX.4.2\x019=73\x0135=D\x0149=SENDER\x0156=TARGET\x0134=1\x01\
+const MSG_ORDER: &[u8] = b"8=FIX.4.2\x019=73\x0135=D\x0149=SENDER\x0156=TARGET\x0134=1\x01\
       52=20240101-12:00:00\x0111=ORD001\x0155=AAPL\x0154=1\x0138=100\x0140=2\x0144=150.00\x01\
       10=042\x01";
 
 /// Execution report: 12 body fields (ExecutionReport-like).
-const MSG_EXEC: &[u8] =
-    b"8=FIX.4.2\x019=104\x0135=8\x0149=TARGET\x0156=SENDER\x0134=2\x01\
+const MSG_EXEC: &[u8] = b"8=FIX.4.2\x019=104\x0135=8\x0149=TARGET\x0156=SENDER\x0134=2\x01\
       52=20240101-12:00:01\x0111=ORD001\x0137=EXEC001\x0117=FILL001\x0120=0\x01\
       39=2\x0155=AAPL\x0154=1\x0138=100\x0132=100\x0131=150.00\x016=150.00\x01\
       10=201\x01";
 
 /// MarketData snapshot: 2 MD entries (bid + offer), 20+ fields total.
-const MSG_MARKET_DATA: &[u8] =
-    b"8=FIX.4.2\x019=100\x0135=W\x0149=MDSRC\x0156=CLIENT\x0134=5\x01\
+const MSG_MARKET_DATA: &[u8] = b"8=FIX.4.2\x019=100\x0135=W\x0149=MDSRC\x0156=CLIENT\x0134=5\x01\
       52=20240101-12:00:00\x0155=AAPL\x01268=2\x01\
       269=0\x01270=149.50\x01271=500\x01272=20240101\x01273=12:00:00\x01\
       269=1\x01270=150.00\x01271=300\x01272=20240101\x01273=12:00:00\x01\
@@ -92,14 +89,14 @@ fn bench_sorted_vs_linear(c: &mut Criterion) {
     for n_finds in [1usize, 2, 4, 6, 8] {
         // Tags to look up, in a realistic order for an ExecutionReport.
         let tags = [
-            tag::SYMBOL,        // 55
-            tag::SIDE,          // 54
-            tag::ORDER_QTY,     // 38
-            tag::PRICE,         // 44
-            tag::MSG_SEQ_NUM,   // 34
-            tag::SENDER_COMP_ID,// 49
-            tag::CL_ORD_ID,     // 11
-            tag::ORD_STATUS,    // 39
+            tag::SYMBOL,         // 55
+            tag::SIDE,           // 54
+            tag::ORDER_QTY,      // 38
+            tag::PRICE,          // 44
+            tag::MSG_SEQ_NUM,    // 34
+            tag::SENDER_COMP_ID, // 49
+            tag::CL_ORD_ID,      // 11
+            tag::ORD_STATUS,     // 39
         ];
         let label = format!("binary_search_{}finds", n_finds);
         group.bench_function(&label, |b| {
@@ -185,9 +182,15 @@ fn bench_decode_and_find(c: &mut Criterion) {
             let msg = dec.decode(black_box(MSG_MARKET_DATA)).unwrap();
             let mut count = 0usize;
             for g in msg.groups(&group::MD_ENTRIES) {
-                count += g.find(tag::MD_ENTRY_TYPE).map(|f| f.value.len()).unwrap_or(0);
+                count += g
+                    .find(tag::MD_ENTRY_TYPE)
+                    .map(|f| f.value.len())
+                    .unwrap_or(0);
                 count += g.find(tag::MD_ENTRY_PX).map(|f| f.value.len()).unwrap_or(0);
-                count += g.find(tag::MD_ENTRY_SIZE).map(|f| f.value.len()).unwrap_or(0);
+                count += g
+                    .find(tag::MD_ENTRY_SIZE)
+                    .map(|f| f.value.len())
+                    .unwrap_or(0);
             }
             black_box(count)
         });

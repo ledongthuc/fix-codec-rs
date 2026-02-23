@@ -959,17 +959,17 @@ pub const LEG_CONTRACT_SETTL_MONTH: Tag = 955;
 pub const LEG_INTEREST_ACCRUAL_DATE: Tag = 956;
 
 // FIX 4.4 aliases for FIX 4.2 renamed tags (backward-compatible)
-pub const SECURITY_ID_SOURCE: Tag = 22;       // was ID_SOURCE
-pub const IOI_QTY: Tag = 27;                  // was IOI_SHARES
-pub const LAST_QTY: Tag = 32;                 // was LAST_SHARES
-pub const QUANTITY: Tag = 53;                 // was SHARES
-pub const POSITION_EFFECT: Tag = 77;          // was OPEN_CLOSE
-pub const ALLOC_QTY: Tag = 80;                // was ALLOC_SHARES
-pub const SETTL_TYPE: Tag = 63;               // was SETTLMNT_TYP
-pub const SETTL_DATE: Tag = 64;               // was FUT_SETT_DATE
-pub const PEG_OFFSET_VALUE: Tag = 211;        // was PEG_DIFFERENCE
+pub const SECURITY_ID_SOURCE: Tag = 22; // was ID_SOURCE
+pub const IOI_QTY: Tag = 27; // was IOI_SHARES
+pub const LAST_QTY: Tag = 32; // was LAST_SHARES
+pub const QUANTITY: Tag = 53; // was SHARES
+pub const POSITION_EFFECT: Tag = 77; // was OPEN_CLOSE
+pub const ALLOC_QTY: Tag = 80; // was ALLOC_SHARES
+pub const SETTL_TYPE: Tag = 63; // was SETTLMNT_TYP
+pub const SETTL_DATE: Tag = 64; // was FUT_SETT_DATE
+pub const PEG_OFFSET_VALUE: Tag = 211; // was PEG_DIFFERENCE
 pub const DISCRETION_OFFSET_VALUE: Tag = 389; // was DISCRETION_OFFSET
-pub const SPREAD: Tag = 218;                  // was SPREAD_TO_BENCHMARK
+pub const SPREAD: Tag = 218; // was SPREAD_TO_BENCHMARK
 
 #[inline]
 pub fn parse_tag(bytes: &[u8]) -> Result<Tag, FixError> {
@@ -978,7 +978,7 @@ pub fn parse_tag(bytes: &[u8]) -> Result<Tag, FixError> {
     }
     let mut value: u32 = 0;
     for &b in bytes {
-        if b < b'0' || b > b'9' {
+        if !b.is_ascii_digit() {
             return Err(FixError::InvalidTag);
         }
         value = value

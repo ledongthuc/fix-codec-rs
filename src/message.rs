@@ -6,7 +6,7 @@ use crate::body_length::parse_body_length;
 use crate::checksum::{compute_checksum, parse_checksum};
 use crate::error::FixError;
 use crate::field::Field;
-use crate::group::{parse_count, GroupIter, GroupSpec, FIX42_GROUPS, FIX44_GROUPS};
+use crate::group::{FIX42_GROUPS, FIX44_GROUPS, GroupIter, GroupSpec, parse_count};
 use crate::tag::{self, Tag};
 
 /// Default inline capacity for the sorted index — matches the decoder's field capacity.
@@ -30,9 +30,9 @@ pub struct Message<'a> {
     /// Index of parsed fields. Each entry is `(tag, start, end)` where:
     /// - `tag`   — the numeric FIX tag (e.g. `8`, `35`, `49`).
     /// - `start` — byte offset in `buf` where the field *value* begins
-    ///             (the byte immediately after `=`).
+    ///   (the byte immediately after `=`).
     /// - `end`   — byte offset in `buf` where the field value ends
-    ///             (the SOH byte `\x01`, exclusive).
+    ///   (the SOH byte `\x01`, exclusive).
     ///
     /// A field value is recovered as `&buf[start as usize..end as usize]`.
     /// The slice is borrowed from the `Decoder`'s internal `SmallVec`, so it
@@ -266,10 +266,9 @@ impl<'a> Message<'a> {
         }
 
         // Parse the declared checksum from the raw buffer.
-        let declared = parse_checksum(
-            &self.buf[checksum_value_start as usize..checksum_value_end as usize],
-        )
-        .ok_or(FixError::InvalidCheckSum)?;
+        let declared =
+            parse_checksum(&self.buf[checksum_value_start as usize..checksum_value_end as usize])
+                .ok_or(FixError::InvalidCheckSum)?;
 
         // Checksum covers all bytes before the "10=" tag bytes.
         let checksum_tag_start = checksum_value_start as usize - 3; // len("10=") == 3

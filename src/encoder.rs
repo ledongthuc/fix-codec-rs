@@ -33,6 +33,12 @@ pub struct Encoder {
     disable_auto_calculate_checksum: bool,
 }
 
+impl Default for Encoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Encoder {
     /// Create a new encoder with default inline body-buffer capacity.
     pub fn new() -> Self {
