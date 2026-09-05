@@ -2,11 +2,11 @@
 name = "fix-codec-rs"
 version = "0.1.1"
 edition = "2024"
-description = "High-performance FIX protocol encoder/decoder for low-latency trading systems"
+description = "High-performance FIX protocol encoder/decoder library"
 license = "MIT"
 repository = "https://github.com/ledongthuc/fix-codec-rs"
-keywords = ["fix", "trading", "finance", "codec", "protocol"]
-categories = ["encoding", "finance", "network-programming"]
+keywords = ["fix", "codec", "protocol", "encoder", "decoder"]
+categories = ["encoding", "network-programming"]
 
 [dependencies]
 smallvec = "1"

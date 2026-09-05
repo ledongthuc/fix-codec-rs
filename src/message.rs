@@ -171,26 +171,6 @@ impl<'a> Message<'a> {
         }
     }
 
-    /// Return an iterator over every repeating group present in this message.
-    ///
-    /// Scans the appropriate group spec array based on the FIX version detected
-    /// from tag 8 (`BEGIN_STRING`): `FIX42_GROUPS` for FIX 4.2 messages, and
-    /// both `FIX42_GROUPS` + `FIX44_GROUPS` for FIX 4.4 messages (which is a
-    /// superset). Yields `(&'static GroupSpec, GroupIter<'a>)` for each spec
-    /// whose count tag is found in the message with a non-zero count. Groups
-    /// whose count tag is absent or zero are skipped.
-    ///
-    /// The order follows the order of the spec arrays, not the order fields
-    /// appear in the message.
-    ///
-    /// # Example
-    /// ```ignore
-    /// for (spec, instances) in msg.all_groups() {
-    ///     for g in instances {
-    ///         // process each group instance
-    ///     }
-    /// }
-    /// ```
     /// Validate the BodyLength field (tag 9).
     ///
     /// A FIX message body spans from the first byte after the `9=…\x01` field
@@ -281,6 +261,26 @@ impl<'a> Message<'a> {
         }
     }
 
+    /// Return an iterator over every repeating group present in this message.
+    ///
+    /// Scans the appropriate group spec array based on the FIX version detected
+    /// from tag 8 (`BEGIN_STRING`): `FIX42_GROUPS` for FIX 4.2 messages, and
+    /// both `FIX42_GROUPS` + `FIX44_GROUPS` for FIX 4.4 messages (which is a
+    /// superset). Yields `(&'static GroupSpec, GroupIter<'a>)` for each spec
+    /// whose count tag is found in the message with a non-zero count. Groups
+    /// whose count tag is absent or zero are skipped.
+    ///
+    /// The order follows the order of the spec arrays, not the order fields
+    /// appear in the message.
+    ///
+    /// # Example
+    /// ```ignore
+    /// for (spec, instances) in msg.all_groups() {
+    ///     for g in instances {
+    ///         // process each group instance
+    ///     }
+    /// }
+    /// ```
     #[inline]
     pub fn all_groups(&self) -> impl Iterator<Item = (&'static GroupSpec, GroupIter<'a>)> + '_ {
         let specs: &[&GroupSpec] = match self.fix_version() {

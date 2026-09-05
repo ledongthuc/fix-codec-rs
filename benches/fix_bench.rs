@@ -157,7 +157,7 @@ fn bench_decode_and_find(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("decode_and_find");
 
-    // Simulate a realistic trading path: decode an order, look up key fields.
+    // Decode an order message, then look up key fields by tag.
     // Field values are &[u8] borrowed from the decoder; copy lengths out so
     // the references don't escape the closure.
     group.throughput(Throughput::Bytes(MSG_ORDER.len() as u64));

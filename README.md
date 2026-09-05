@@ -1,6 +1,6 @@
 # fix-codec-rs
 
-A high-performance FIX (Financial Information Exchange) protocol encoder/decoder library written in Rust, designed for HFT and low-latency trading systems.
+A high-performance FIX (Financial Information Exchange) protocol encoder/decoder library written in Rust.
 
 We target to encode and decode level, no session or application level for this protocol.
 
