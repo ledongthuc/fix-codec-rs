@@ -1,14 +1,8 @@
-use smallvec::SmallVec;
-
 use crate::checksum::compute_checksum;
 use crate::error::FixError;
 use crate::field::FIELD_SEPARATOR;
 use crate::message::Message;
 use crate::tag;
-
-/// Default inline capacity for the body buffer (bytes).
-/// Covers the body of most FIX messages without spilling to the heap.
-const DEFAULT_CAPACITY: usize = 512;
 
 /// A reusable FIX message encoder.
 ///
@@ -24,7 +18,7 @@ const DEFAULT_CAPACITY: usize = 512;
 pub struct Encoder {
     /// Reusable scratch buffer for building the message body.
     /// Cleared (not dropped) at the start of each encode call so capacity is preserved.
-    body: SmallVec<[u8; DEFAULT_CAPACITY]>,
+    body: Vec<u8>,
     /// When true, tag 9 (BodyLength) is not auto-computed; the value from the
     /// message is used as-is if present, otherwise the field is omitted.
     disable_auto_calculate_body_length: bool,
@@ -40,10 +34,10 @@ impl Default for Encoder {
 }
 
 impl Encoder {
-    /// Create a new encoder with default inline body-buffer capacity.
+    /// Create a new encoder with an empty body buffer.
     pub fn new() -> Self {
         Self {
-            body: SmallVec::new(),
+            body: Vec::new(),
             disable_auto_calculate_body_length: false,
             disable_auto_calculate_checksum: false,
         }
@@ -52,7 +46,7 @@ impl Encoder {
     /// Create a new encoder pre-allocated for `capacity` body bytes.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            body: SmallVec::with_capacity(capacity),
+            body: Vec::with_capacity(capacity),
             disable_auto_calculate_body_length: false,
             disable_auto_calculate_checksum: false,
         }

@@ -9,7 +9,6 @@ keywords = ["fix", "codec", "protocol", "encoder", "decoder"]
 categories = ["encoding", "network-programming"]
 
 [dependencies]
-smallvec = "1"
 memchr = "2"
 
 [dev-dependencies]
@@ -17,10 +16,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
 name = "fix_bench"
-harness = false
-
-[[bench]]
-name = "smallvec_vs_vec"
 harness = false
 
 [[bench]]

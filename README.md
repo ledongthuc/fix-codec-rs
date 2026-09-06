@@ -10,7 +10,7 @@ Tested with FIX versions 4.2, 4.4, and 5.0
 
 - **Zero-copy decoding** — field values are byte slices into the original buffer, no allocation on the hot path
 - **Reusable decoder/encoder** — single instance across thousands of messages, amortizes allocation cost
-- **SmallVec inline storage** — 95%+ of messages fit in inline stack storage (32-field default), avoiding heap allocation entirely
+- **Reusable internal buffers** — decoder/encoder hold `Vec` buffers that are cleared and reused across messages, avoiding per-message allocation
 - **SIMD-accelerated scanning** — uses `memchr` for fast `=` and SOH delimiter search
 - **Lazy sorted index** — O(log n) `find()` via binary search, built only on first use
 - **Repeating groups** — full support for nested groups, FIX 4.2, FIX 4.4, and FIX 5.0 specifications
@@ -192,15 +192,32 @@ const MY_GROUP: GroupSpec = GroupSpec {
 
 Benchmarks run with Criterion.rs on Apple M-series (arm64). Run your own with `cargo bench`.
 
+### Heap allocations per message
+
+Measured with the counting-allocator benchmark (`cargo bench --bench alloc_count`),
+averaged over 100 000 iterations.
+
+| scenario        | small (4 fields) | typical (14 fields) | large (100 fields) |
+|-----------------|------------------|---------------------|--------------------|
+| decode cold     | 1                | 3                   | 6                  |
+| decode reuse    | 0                | 0                   | 0                  |
+| encode cold     | 1                | 5                   | 9                  |
+| encode reuse    | 0                | 0                   | 0                  |
+
+A fresh `Decoder`/`Encoder` allocates as its internal `Vec` grows to fit the
+message. Reused instances `clear()` their buffers while preserving capacity, so
+steady-state encode/decode performs zero allocations. Struct sizes: `Decoder`
+is 24 B and `Encoder` is 32 B.
+
 ### Decode throughput
 
 | Message                    | Time    | Throughput  |
 |----------------------------|---------|-------------|
-| Tiny (26 B)                | 14.7 ns | 1.65 GiB/s  |
-| New Order Single (118 B)   | 122.5 ns| 919.0 MiB/s |
-| Execution Report (162 B)   | 172.2 ns| 897.4 MiB/s |
-| Market Data Snapshot (189 B) | 186.1 ns| 968.3 MiB/s |
-| FIX 5.0 RootParties (129 B) | 146.0 ns| 842.7 MiB/s |
+| Tiny (26 B)                | 14.6 ns | 1.66 GiB/s  |
+| New Order Single (118 B)   | 122.2 ns| 920.6 MiB/s |
+| Execution Report (162 B)   | 170.6 ns| 905.6 MiB/s |
+| Market Data Snapshot (189 B) | 180.0 ns| 1001.1 MiB/s |
+| FIX 5.0 RootParties (129 B) | 145.9 ns| 843.3 MiB/s |
 
 ### `find()` strategy: binary search vs linear scan
 
@@ -208,8 +225,8 @@ Measured on the Execution Report message:
 
 | Strategy      | 1 lookup | 4 lookups | 8 lookups |
 |---------------|----------|-----------|-----------|
-| Binary search | 281.7 ns | 290.3 ns  | 305.8 ns  |
-| Linear scan   | 180.0 ns | 200.2 ns  | 210.4 ns  |
+| Binary search | 243.6 ns | 253.1 ns  | 263.3 ns  |
+| Linear scan   | 210.9 ns | 219.2 ns  | 229.1 ns  |
 
 Binary search (via lazy sorted index) is the default. On small messages the
 sorted-index build cost means linear scan is faster for a handful of lookups;
@@ -219,24 +236,24 @@ binary search pays off on larger messages and higher lookup counts.
 
 | Message                     | Time    | Throughput  |
 |-----------------------------|---------|-------------|
-| Tiny (26 B)                 | 77.0 ns | 322.1 MiB/s |
-| New Order Single (118 B)    | 334.4 ns| 336.5 MiB/s |
-| Execution Report (162 B)    | 465.4 ns| 332.0 MiB/s |
-| Market Data Snapshot (189 B)| 491.8 ns| 366.5 MiB/s |
-| FIX 5.0 RootParties (129 B) | 380.7 ns| 323.1 MiB/s |
+| Tiny (26 B)                 | 55.7 ns | 445.0 MiB/s |
+| New Order Single (118 B)    | 250.4 ns| 449.4 MiB/s |
+| Execution Report (162 B)    | 356.8 ns| 433.0 MiB/s |
+| Market Data Snapshot (189 B)| 360.3 ns| 500.3 MiB/s |
+| FIX 5.0 RootParties (129 B) | 276.6 ns| 444.8 MiB/s |
 
 ### Roundtrip (decode + encode)
 
 | Message                   | Time    | Throughput  |
 |---------------------------|---------|-------------|
-| New Order Single (118 B)  | 340.3 ns| 330.7 MiB/s |
-| Execution Report (162 B)  | 468.0 ns| 330.2 MiB/s |
+| New Order Single (118 B)  | 249.1 ns| 451.8 MiB/s |
+| Execution Report (162 B)  | 367.6 ns| 420.3 MiB/s |
 
 ### FIX 5.0 group iteration
 
 | Benchmark                                   | Time    | Throughput  |
 |---------------------------------------------|---------|-------------|
-| RootParties → RootPartySubIDs iterate + find | 522.0 ns| 235.7 MiB/s |
+| RootParties → RootPartySubIDs iterate + find | 558.6 ns| 220.2 MiB/s |
 
 Run full benchmarks:
 
@@ -250,9 +267,9 @@ open target/criterion/report/index.html
 
 **Zero-copy** — `Message<'a>` and `Group<'a>` hold references into the original input buffer. No string copies. Values are `&[u8]` slices; callers parse numeric/string values as needed.
 
-**Reusable decoder** — `Decoder` holds a `SmallVec` internally. Reuse the same instance across messages to avoid repeated allocation. The decoder clears internal state on each `decode()` call.
+**Reusable decoder** — `Decoder` holds a `Vec` internally. Reuse the same instance across messages to avoid repeated allocation. The decoder clears internal state on each `decode()` call.
 
-**SmallVec inline storage** — field offset storage fits 32 entries inline on the stack. Messages with more than 32 fields spill to the heap automatically.
+**Reusable internal buffers** — decoder field-offset storage and the encoder body scratch buffer are `Vec`s that are cleared (not dropped) between calls, so capacity is preserved across messages and steady-state encode/decode performs zero allocations.
 
 **Lazy sorted index** — `Message::find()` builds a sorted tag index on first call using `OnceCell`. Subsequent `find()` calls on the same message use binary search. If you only iterate with `fields()`, no sort ever happens.
 

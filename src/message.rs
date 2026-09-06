@@ -1,7 +1,5 @@
 use std::cell::OnceCell;
 
-use smallvec::SmallVec;
-
 use crate::body_length::parse_body_length;
 use crate::checksum::{compute_checksum, parse_checksum};
 use crate::error::FixError;
@@ -9,9 +7,6 @@ use crate::field::Field;
 use crate::group::{FIX42_GROUPS, FIX44_GROUPS, FIX50_GROUPS, GroupIter, GroupSpec, parse_count};
 use crate::tag::{self, Tag};
 use crate::version::{self, FixVersion};
-
-/// Default inline capacity for the sorted index — matches the decoder's field capacity.
-const SORTED_CAPACITY: usize = 32;
 
 /// A decoded FIX message.
 ///
@@ -36,7 +31,7 @@ pub struct Message<'a> {
     ///   (the SOH byte `\x01`, exclusive).
     ///
     /// A field value is recovered as `&buf[start as usize..end as usize]`.
-    /// The slice is borrowed from the `Decoder`'s internal `SmallVec`, so it
+    /// The slice is borrowed from the `Decoder`'s internal `Vec`, so it
     /// lives as long as `'a`.
     pub(crate) offsets: &'a [(Tag, u32, u32)],
 
@@ -46,7 +41,7 @@ pub struct Message<'a> {
     /// of the message via `OnceCell`. Never allocated if `find()` is never
     /// called, and built at most once regardless of how many times `find()` is
     /// called.
-    sorted: OnceCell<SmallVec<[(Tag, u16); SORTED_CAPACITY]>>,
+    sorted: OnceCell<Vec<(Tag, u16)>>,
 }
 
 impl<'a> Message<'a> {
@@ -136,8 +131,7 @@ impl<'a> Message<'a> {
     #[inline]
     pub fn find(&self, tag: Tag) -> Option<Field<'a>> {
         let sorted = self.sorted.get_or_init(|| {
-            let mut v: SmallVec<[(Tag, u16); SORTED_CAPACITY]> =
-                SmallVec::with_capacity(self.offsets.len());
+            let mut v: Vec<(Tag, u16)> = Vec::with_capacity(self.offsets.len());
             for (i, &(t, _, _)) in self.offsets.iter().enumerate() {
                 v.push((t, i as u16));
             }

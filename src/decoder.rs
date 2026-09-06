@@ -1,17 +1,13 @@
 use memchr::memchr;
-use smallvec::SmallVec;
 
 use crate::error::FixError;
 use crate::field::{FIELD_KEY_VALUE_SEPARATOR, FIELD_SEPARATOR};
 use crate::message::Message;
 use crate::tag::{Tag, parse_tag};
 
-/// Default inline capacity: covers ~95% of FIX messages without heap spill.
-const DEFAULT_CAPACITY: usize = 32;
-
 /// A reusable FIX message decoder.
 ///
-/// Owns a `SmallVec` buffer that is allocated once (at startup or first use)
+/// Owns a `Vec` buffer that is allocated once (at startup or first use)
 /// and reused across every `decode` call — zero allocation per message on the
 /// hot path.
 ///
@@ -33,7 +29,7 @@ pub struct Decoder {
     /// Stores (tag, value_start_offset, value_end_offset) per field.
     /// clear() at the start of each decode call preserves allocated capacity —
     /// no free/malloc on the hot path.
-    offsets: SmallVec<[(Tag, u32, u32); DEFAULT_CAPACITY]>,
+    offsets: Vec<(Tag, u32, u32)>,
 }
 
 impl Default for Decoder {
@@ -43,18 +39,19 @@ impl Default for Decoder {
 }
 
 impl Decoder {
-    /// Create a new decoder with a default inline capacity of 32 fields.
+    /// Create a new decoder with an empty field-offset buffer.
     pub fn new() -> Self {
         Self {
-            offsets: SmallVec::new(),
+            offsets: Vec::new(),
         }
     }
 
     /// Create a new decoder pre-allocated for `capacity` fields.
-    /// Use this when messages consistently exceed 32 fields (e.g. MarketData).
+    /// Use this to avoid reallocations when messages consistently contain many
+    /// fields (e.g. MarketData).
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            offsets: SmallVec::with_capacity(capacity),
+            offsets: Vec::with_capacity(capacity),
         }
     }
 
@@ -185,7 +182,7 @@ mod tests {
 
     #[test]
     fn happy_exactly_32_fields() {
-        // 32 fields = inline SmallVec capacity boundary, no heap spill
+        // 32 fields decode correctly.
         let mut dec = Decoder::new();
         let mut buf = Vec::new();
         for i in 1u32..=32 {
@@ -200,8 +197,8 @@ mod tests {
     }
 
     #[test]
-    fn happy_33_fields_spills_to_heap() {
-        // 33 fields forces SmallVec past inline capacity — must still be correct
+    fn happy_33_fields_grows_buffer() {
+        // 33 fields grows the internal Vec — must still be correct
         let mut dec = Decoder::new();
         let mut buf = Vec::new();
         for i in 1u32..=33 {
@@ -230,7 +227,7 @@ mod tests {
 
     #[test]
     fn reuse_large_then_small() {
-        // After a 33-field msg causes heap spill, a 1-field msg still works
+        // After a 33-field msg, a 1-field msg still works
         let mut dec = Decoder::new();
         let mut big_buf = Vec::new();
         for i in 1u32..=33 {
@@ -484,8 +481,8 @@ mod tests {
     }
 
     #[test]
-    fn with_capacity_one_spills_to_heap() {
-        // Pre-allocate 1, decode 33 fields — SmallVec must spill correctly.
+    fn with_capacity_one_grows() {
+        // Pre-allocate 1, decode 33 fields — Vec must grow correctly.
         let mut dec = Decoder::with_capacity(1);
         let mut buf = Vec::new();
         for i in 1u32..=33 {
