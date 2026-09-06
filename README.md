@@ -4,7 +4,7 @@ A high-performance FIX (Financial Information Exchange) protocol encoder/decoder
 
 We target to encode and decode level, no session or application level for this protocol.
 
-Tested with FIX version 4.2 and 4.4
+Tested with FIX versions 4.2, 4.4, and 5.0
 
 ## Features
 
@@ -13,9 +13,9 @@ Tested with FIX version 4.2 and 4.4
 - **SmallVec inline storage** — 95%+ of messages fit in inline stack storage (32-field default), avoiding heap allocation entirely
 - **SIMD-accelerated scanning** — uses `memchr` for fast `=` and SOH delimiter search
 - **Lazy sorted index** — O(log n) `find()` via binary search, built only on first use
-- **Repeating groups** — full support for nested groups, both FIX 4.2 and FIX 4.4 specifications
+- **Repeating groups** — full support for nested groups, FIX 4.2, FIX 4.4, and FIX 5.0 specifications
 - **Auto checksum/body length** — automatic tag 9 and tag 10 computation during encoding (toggleable)
-- **500+ tag constants** — comprehensive coverage of FIX 4.2 and FIX 4.4 tag definitions
+- **1100+ tag constants** — comprehensive coverage of FIX 4.2, FIX 4.4, and FIX 5.0 tag definitions
 
 ## Installation
 
@@ -27,7 +27,7 @@ Or add to your `Cargo.toml` manually:
 
 ```toml
 [dependencies]
-fix-codec-rs = "0.1.0"
+fix-codec-rs = "0.2.0"
 ```
 
 ## Usage
@@ -135,7 +135,7 @@ let raw = b"8=FIX.4.2\x019=100\x0135=W\x0149=SERVER\x0156=CLIENT\x01268=2\x01269
 let msg = decoder.decode(raw).unwrap();
 
 // Iterate MD entries using the built-in FIX 4.2 group spec
-for entry in msg.groups(&group::fix42::MD_ENTRIES) {
+for entry in msg.groups(&group::MD_ENTRIES) {
     if let Some(price) = entry.find(tag::MD_ENTRY_PX) {
         println!("Price: {}", std::str::from_utf8(price.value).unwrap());
     }
@@ -157,12 +157,12 @@ let raw = b"8=FIX.4.4\x019=...\x0135=AE\x01453=2\x01448=FIRM_A\x01447=D\x01452=1
 
 let msg = decoder.decode(raw).unwrap();
 
-for party in msg.groups(&group::fix44::PARTY_IDS) {
+for party in msg.groups(&group::PARTY_IDS) {
     if let Some(id) = party.find(tag::PARTY_ID) {
         println!("Party: {}", std::str::from_utf8(id.value).unwrap());
     }
     // Access nested group within each party
-    for nested in party.groups(&group::fix44::NESTED_PARTY_IDS) {
+    for nested in party.groups(&group::NESTED_PARTY_IDS) {
         if let Some(nid) = nested.find(tag::NESTED_PARTY_ID) {
             println!("  Nested: {}", std::str::from_utf8(nid.value).unwrap());
         }
@@ -194,35 +194,49 @@ Benchmarks run with Criterion.rs on Apple M-series (arm64). Run your own with `c
 
 ### Decode throughput
 
-| Message                     | Fields | Size    | Throughput  |
-|-----------------------------|--------|---------|-------------|
-| Tiny (1 field)              | 1      | ~9 B    | ~600 ns/msg |
-| New Order Single            | 8      | ~73 B   | ~800 ns/msg |
-| Execution Report            | 12     | ~104 B  | ~1.0 µs/msg |
-| Market Data Snapshot        | 20     | ~100 B  | ~1.1 µs/msg |
+| Message                    | Time    | Throughput  |
+|----------------------------|---------|-------------|
+| Tiny (26 B)                | 14.7 ns | 1.65 GiB/s  |
+| New Order Single (118 B)   | 122.5 ns| 919.0 MiB/s |
+| Execution Report (162 B)   | 172.2 ns| 897.4 MiB/s |
+| Market Data Snapshot (189 B) | 186.1 ns| 968.3 MiB/s |
+| FIX 5.0 RootParties (129 B) | 146.0 ns| 842.7 MiB/s |
 
 ### `find()` strategy: binary search vs linear scan
 
-| Strategy        | 1 lookup | 4 lookups | 8 lookups |
-|-----------------|----------|-----------|-----------|
-| Binary search   | lower    | lower     | lower     |
-| Linear scan     | lower    | higher    | higher    |
+Measured on the Execution Report message:
 
-Binary search (via lazy sorted index) is the default. Break-even point is typically around 2–3 lookups per message.
+| Strategy      | 1 lookup | 4 lookups | 8 lookups |
+|---------------|----------|-----------|-----------|
+| Binary search | 281.7 ns | 290.3 ns  | 305.8 ns  |
+| Linear scan   | 180.0 ns | 200.2 ns  | 210.4 ns  |
+
+Binary search (via lazy sorted index) is the default. On small messages the
+sorted-index build cost means linear scan is faster for a handful of lookups;
+binary search pays off on larger messages and higher lookup counts.
 
 ### Encode throughput
 
-| Message                     | Throughput  |
-|-----------------------------|-------------|
-| New Order Single            | ~700 ns/msg |
-| Execution Report            | ~900 ns/msg |
+| Message                     | Time    | Throughput  |
+|-----------------------------|---------|-------------|
+| Tiny (26 B)                 | 77.0 ns | 322.1 MiB/s |
+| New Order Single (118 B)    | 334.4 ns| 336.5 MiB/s |
+| Execution Report (162 B)    | 465.4 ns| 332.0 MiB/s |
+| Market Data Snapshot (189 B)| 491.8 ns| 366.5 MiB/s |
+| FIX 5.0 RootParties (129 B) | 380.7 ns| 323.1 MiB/s |
 
 ### Roundtrip (decode + encode)
 
-| Message                     | Throughput    |
-|-----------------------------|---------------|
-| New Order Single            | ~1.5 µs/msg   |
-| Market Data Snapshot        | ~2.0 µs/msg   |
+| Message                   | Time    | Throughput  |
+|---------------------------|---------|-------------|
+| New Order Single (118 B)  | 340.3 ns| 330.7 MiB/s |
+| Execution Report (162 B)  | 468.0 ns| 330.2 MiB/s |
+
+### FIX 5.0 group iteration
+
+| Benchmark                                   | Time    | Throughput  |
+|---------------------------------------------|---------|-------------|
+| RootParties → RootPartySubIDs iterate + find | 522.0 ns| 235.7 MiB/s |
 
 Run full benchmarks:
 
@@ -249,9 +263,58 @@ open target/criterion/report/index.html
 | Version | Tag Coverage | Group Specs |
 |---------|-------------|-------------|
 | FIX 4.2 | 450+ tags   | 19 groups   |
-| FIX 4.4 | 500+ tags   | 37 groups   |
+| FIX 4.4 | 500+ tags   | 55 groups   |
+| FIX 5.0 | 177 new tags (957–1139) | 65 groups   |
 
-Tag constants are in `fix_codec_rs::tag`. Group specs are in `fix_codec_rs::group::fix42` and `fix_codec_rs::group::fix44`.
+Tag constants are in `fix_codec_rs::tag`. Group specs are flat constants in
+`fix_codec_rs::group` (e.g. `group::MD_ENTRIES`, `group::PARTY_IDS`), plus the
+version arrays `FIX42_GROUPS`, `FIX44_GROUPS`, and `FIX50_GROUPS` (there are no
+`group::fix42`/`group::fix44` submodules).
+
+## FIX 5.0 (`FIXT.1.1`) notes
+
+FIX 5.0 does **not** use `BeginString(8) = FIX.5.0`. The session/transport
+`BeginString` is **`FIXT.1.1`**, and the application version is carried in
+header field **`ApplVerID(1128)`** (`4` = FIX 4.2, `6` = FIX 4.4, `7` = FIX 5.0).
+A `BeginString = FIX.5.0` is not the standard spelling.
+
+Group dispatch uses the message's own fields via `Message::resolve_version()`:
+
+| `BeginString(8)` | `ApplVerID(1128)` | Group specs |
+|------------------|-------------------|-------------|
+| `FIXT.1.1`       | `7`               | `FIX50_GROUPS` |
+| `FIXT.1.1`       | `6`               | `FIX44_GROUPS` |
+| `FIXT.1.1`       | `4`               | `FIX42_GROUPS` |
+| `FIXT.1.1`       | absent            | empty (unknown — no guessing) |
+| `FIXT.1.1`       | other             | empty (unsupported) |
+| `FIX.4.4`        | any/absent        | `FIX44_GROUPS` |
+| `FIX.4.2`        | any/absent        | `FIX42_GROUPS` |
+| absent/unknown   | any/absent        | empty (unknown — no guessing) |
+
+A `FIXT.1.1` Logon (`35=A`) legitimately carries the `NoMsgTypes(384)` repeating
+group but usually has no `ApplVerID`, so `all_groups()` returns an empty set for
+it. To iterate Logon `NoMsgTypes`, call the version-dispatch-free API directly:
+
+```rust
+for entry in msg.groups(&group::MSG_TYPES) {
+    // ...
+}
+```
+
+## Breaking changes in 0.2.0
+
+`Message::all_groups()` no longer falls back to `FIX42_GROUPS` for unknown or
+absent `BeginString` values. Unknown/absent `BeginString`, unresolved `FIXT.1.1`,
+and the valid-but-unsupported legacy `BeginString`s `FIX.4.0`, `FIX.4.1`, and
+`FIX.4.3` now return an empty group set. Use `Message::resolve_version()`
+(`Option<FixVersion>`, where `None` means unknown/unsupported) for a hard signal,
+or the raw accessors `Message::fix_version()` / `Message::appl_ver_id()`.
+
+The encoder keeps `8=FIX.4.4` as the default when tag 8 is absent regardless of
+`ApplVerID`; a constructed message with `ApplVerID` but no `8=` encodes as
+`8=FIX.4.4` + `1128=…`. Set `8=FIXT.1.1` explicitly when building FIX 5.0
+messages from scratch. Transport-independence (omitting `8=` entirely) is out of
+scope for this codec.
 
 ## Dev Setup
 

@@ -27,6 +27,12 @@ const MSG_MARKET_DATA: &[u8] = b"8=FIX.4.2\x019=100\x0135=W\x0149=MDSRC\x0156=CL
       269=1\x01270=150.00\x01271=300\x01272=20240101\x01273=12:00:00\x01\
       10=088\x01";
 
+/// FIXT.1.1 (FIX 5.0) message with a nested `RootParties` → `RootPartySubIDs`
+/// group. Body length and checksum are pre-computed and valid.
+const MSG_FIX50: &[u8] = b"8=FIXT.1.1\x019=105\x0135=AB\x0149=S\x0156=T\x0134=1\x01\
+      52=20240101-12:00:00\x011128=7\x011116=1\x011117=ROOT1\x011118=D\x011119=1\x01\
+      1120=1\x011121=SUB1\x011122=1\x0110=109\x01";
+
 // ---------------------------------------------------------------------------
 // Decode benchmarks
 // ---------------------------------------------------------------------------
@@ -39,6 +45,7 @@ fn bench_decode(c: &mut Criterion) {
         ("order_8fields", MSG_ORDER),
         ("exec_report_12fields", MSG_EXEC),
         ("market_data_20fields", MSG_MARKET_DATA),
+        ("fix50_root_parties", MSG_FIX50),
     ] {
         group.throughput(Throughput::Bytes(msg.len() as u64));
         group.bench_with_input(BenchmarkId::new("reuse", name), msg, |b, msg| {
@@ -211,6 +218,7 @@ fn bench_encode(c: &mut Criterion) {
         ("order_8fields", MSG_ORDER),
         ("exec_report_12fields", MSG_EXEC),
         ("market_data_20fields", MSG_MARKET_DATA),
+        ("fix50_root_parties", MSG_FIX50),
     ] {
         group.throughput(Throughput::Bytes(raw.len() as u64));
         group.bench_with_input(BenchmarkId::new("reuse", name), raw, |b, raw| {
@@ -258,6 +266,48 @@ fn bench_roundtrip(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
+// FIX 5.0 group iteration benchmark
+// ---------------------------------------------------------------------------
+
+fn bench_fix50_groups(c: &mut Criterion) {
+    use fix_codec_rs::group;
+    use fix_codec_rs::tag;
+
+    let mut group = c.benchmark_group("fix50_groups");
+    group.throughput(Throughput::Bytes(MSG_FIX50.len() as u64));
+    group.bench_function("root_parties_nested_iterate_find", |b| {
+        let mut dec = Decoder::new();
+        b.iter(|| {
+            let msg = dec.decode(black_box(MSG_FIX50)).unwrap();
+            let mut total = msg
+                .find(tag::APPL_VER_ID)
+                .map(|f| f.value.len())
+                .unwrap_or(0);
+            for (spec, instances) in msg.all_groups() {
+                if spec.count_tag != tag::NO_ROOT_PARTY_IDS {
+                    continue;
+                }
+                for party in instances {
+                    total += party
+                        .find(tag::ROOT_PARTY_ID)
+                        .map(|f| f.value.len())
+                        .unwrap_or(0);
+                    for sub in party.groups(&group::ROOT_PARTY_SUB_IDS) {
+                        total += sub
+                            .find(tag::ROOT_PARTY_SUB_ID)
+                            .map(|f| f.value.len())
+                            .unwrap_or(0);
+                    }
+                }
+            }
+            black_box(total)
+        });
+    });
+
+    group.finish();
+}
+
+// ---------------------------------------------------------------------------
 // Criterion entry point
 // ---------------------------------------------------------------------------
 
@@ -268,5 +318,6 @@ criterion_group!(
     bench_encode,
     bench_roundtrip,
     bench_sorted_vs_linear,
+    bench_fix50_groups,
 );
 criterion_main!(benches);

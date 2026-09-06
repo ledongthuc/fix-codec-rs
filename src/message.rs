@@ -6,8 +6,9 @@ use crate::body_length::parse_body_length;
 use crate::checksum::{compute_checksum, parse_checksum};
 use crate::error::FixError;
 use crate::field::Field;
-use crate::group::{FIX42_GROUPS, FIX44_GROUPS, GroupIter, GroupSpec, parse_count};
+use crate::group::{FIX42_GROUPS, FIX44_GROUPS, FIX50_GROUPS, GroupIter, GroupSpec, parse_count};
 use crate::tag::{self, Tag};
+use crate::version::{self, FixVersion};
 
 /// Default inline capacity for the sorted index — matches the decoder's field capacity.
 const SORTED_CAPACITY: usize = 32;
@@ -95,10 +96,36 @@ impl<'a> Message<'a> {
     /// Return the value of tag 8 (`BEGIN_STRING`) as a byte slice, or `None`
     /// if the field is absent.
     ///
-    /// Common values are `b"FIX.4.2"`, `b"FIX.4.4"`, `b"FIXT.1.1"`, etc.
+    /// This is the **transport** `BeginString`. Common values are `b"FIX.4.2"`,
+    /// `b"FIX.4.4"`, `b"FIXT.1.1"`, etc. For FIX 5.0+ the application version
+    /// is not carried here; use [`Self::appl_ver_id`] or
+    /// [`Self::resolve_version`] instead.
     #[inline]
     pub fn fix_version(&self) -> Option<&'a [u8]> {
         self.find(tag::BEGIN_STRING).map(|f| f.value)
+    }
+
+    /// Return the raw value of tag 1128 (`APPL_VER_ID`) as a byte slice, or
+    /// `None` if the field is absent.
+    ///
+    /// For `FIXT.1.1` messages this is the application version enum value
+    /// (`"4"` = FIX 4.2, `"6"` = FIX 4.4, `"7"` = FIX 5.0 in the Dec 2006
+    /// spec). The raw bytes are exposed so callers can inspect unsupported
+    /// values without the resolver guessing.
+    #[inline]
+    pub fn appl_ver_id(&self) -> Option<&'a [u8]> {
+        self.find(tag::APPL_VER_ID).map(|f| f.value)
+    }
+
+    /// Resolve the application-level FIX version from this message's own fields
+    /// only (tag 8 and tag 1128).
+    ///
+    /// Returns `None` when the version is unknown or unsupported; this is a
+    /// hard signal and never a guess. Session-level version resolution (Logon
+    /// `NoMsgTypes`, `DefaultApplVerID`) is intentionally out of scope.
+    #[inline]
+    pub fn resolve_version(&self) -> Option<FixVersion> {
+        version::resolve(self.fix_version(), self.appl_ver_id())
     }
 
     /// Find the first field with the given tag, or `None` if not present.
@@ -263,12 +290,19 @@ impl<'a> Message<'a> {
 
     /// Return an iterator over every repeating group present in this message.
     ///
-    /// Scans the appropriate group spec array based on the FIX version detected
-    /// from tag 8 (`BEGIN_STRING`): `FIX42_GROUPS` for FIX 4.2 messages, and
-    /// both `FIX42_GROUPS` + `FIX44_GROUPS` for FIX 4.4 messages (which is a
-    /// superset). Yields `(&'static GroupSpec, GroupIter<'a>)` for each spec
-    /// whose count tag is found in the message with a non-zero count. Groups
-    /// whose count tag is absent or zero are skipped.
+    /// Selects the appropriate group spec array by resolving the application
+    /// version from the message's own fields:
+    ///
+    /// - `BeginString(8) = FIX.4.2` → [`FIX42_GROUPS`]
+    /// - `BeginString(8) = FIX.4.4` → [`FIX44_GROUPS`]
+    /// - `BeginString(8) = FIXT.1.1` + `ApplVerID(1128) = 4` → [`FIX42_GROUPS`]
+    /// - `BeginString(8) = FIXT.1.1` + `ApplVerID(1128) = 6` → [`FIX44_GROUPS`]
+    /// - `BeginString(8) = FIXT.1.1` + `ApplVerID(1128) = 7` → [`FIX50_GROUPS`]
+    /// - anything else (unknown/absent/unsupported) → empty (no guessing)
+    ///
+    /// Yields `(&'static GroupSpec, GroupIter<'a>)` for each spec whose count
+    /// tag is found in the message with a non-zero count. Groups whose count tag
+    /// is absent or zero are skipped.
     ///
     /// The order follows the order of the spec arrays, not the order fields
     /// appear in the message.
@@ -283,9 +317,11 @@ impl<'a> Message<'a> {
     /// ```
     #[inline]
     pub fn all_groups(&self) -> impl Iterator<Item = (&'static GroupSpec, GroupIter<'a>)> + '_ {
-        let specs: &[&GroupSpec] = match self.fix_version() {
-            Some(b"FIX.4.4") => FIX44_GROUPS,
-            _ => FIX42_GROUPS,
+        let specs: &[&GroupSpec] = match self.resolve_version() {
+            Some(FixVersion::Fix42) => FIX42_GROUPS,
+            Some(FixVersion::Fix44) => FIX44_GROUPS,
+            Some(FixVersion::Fix50) => FIX50_GROUPS,
+            None => &[],
         };
 
         specs.iter().copied().filter_map(|spec| {

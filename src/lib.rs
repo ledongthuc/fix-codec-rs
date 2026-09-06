@@ -7,3 +7,4 @@ pub mod field;
 pub mod group;
 pub mod message;
 pub mod tag;
+pub mod version;

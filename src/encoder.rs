@@ -84,7 +84,15 @@ impl Encoder {
     /// are computed automatically and any existing 9 or 10 fields in `msg` are ignored.
     /// Use `disable_auto_calculate_body_length(true)` or
     /// `disable_auto_calculate_checksum(true)` to write the message's own values instead.
-    /// If tag 8 (BeginString) is absent, `FIX.4.4` is used as the default version.
+    ///
+    /// Tag 8 (`BeginString`) is copied verbatim when present; `FIXT.1.1` is
+    /// supported and `ApplVerID(1128)` flows through the body unchanged (the
+    /// FIX 5.0 field-ordering rules only fix the positions of 8, 9, 35 and 10).
+    /// If tag 8 is absent, `FIX.4.4` is used as the default version regardless of
+    /// `ApplVerID`. This means a *constructed* message with `ApplVerID(1128)` but
+    /// no `8=` encodes as `8=FIX.4.4` + `1128=…`; callers building FIX 5.0
+    /// messages from scratch must set `8=FIXT.1.1` explicitly. Transport
+    /// independence (omitting `8=` entirely) is out of scope for this codec.
     pub fn encode(&mut self, msg: &Message<'_>, out: &mut Vec<u8>) -> Result<(), FixError> {
         const DEFAULT_VERSION: &[u8] = b"FIX.4.4";
         let version = msg

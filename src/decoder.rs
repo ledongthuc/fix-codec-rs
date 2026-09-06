@@ -693,7 +693,7 @@ mod tests {
         // Message contains only NO_MISC_FEES — all_groups must yield exactly one entry.
         let mut dec = Decoder::new();
         let msg = dec
-            .decode(b"35=J\x01136=1\x01137=7.00\x01138=USD\x01139=2\x01")
+            .decode(b"8=FIX.4.2\x0135=J\x01136=1\x01137=7.00\x01138=USD\x01139=2\x01")
             .unwrap();
 
         let mut iter = msg.all_groups();
@@ -712,7 +712,7 @@ mod tests {
         let mut dec = Decoder::new();
         let msg = dec
             .decode(
-                b"35=D\x01215=2\x01216=1\x01217=ROUTE_A\x01216=2\x01217=ROUTE_B\x01\
+                b"8=FIX.4.2\x0135=D\x01215=2\x01216=1\x01217=ROUTE_A\x01216=2\x01217=ROUTE_B\x01\
                   136=1\x01137=1.00\x01138=USD\x01139=3\x01",
             )
             .unwrap();
@@ -728,7 +728,7 @@ mod tests {
     fn all_groups_count_zero_skipped() {
         // NO_MISC_FEES=0 must not appear in all_groups output.
         let mut dec = Decoder::new();
-        let msg = dec.decode(b"35=J\x01136=0\x01").unwrap();
+        let msg = dec.decode(b"8=FIX.4.2\x0135=J\x01136=0\x01").unwrap();
         assert_eq!(msg.all_groups().count(), 0);
     }
 
@@ -737,7 +737,7 @@ mod tests {
         // Verify that instances returned through all_groups() have the right field values.
         let mut dec = Decoder::new();
         let msg = dec
-            .decode(b"35=W\x01268=2\x01269=0\x01270=50.00\x01269=1\x01270=50.25\x01")
+            .decode(b"8=FIX.4.2\x0135=W\x01268=2\x01269=0\x01270=50.00\x01269=1\x01270=50.25\x01")
             .unwrap();
 
         let mut all = msg.all_groups();

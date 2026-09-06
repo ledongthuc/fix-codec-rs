@@ -864,6 +864,115 @@ pub const CLEARING_INSTRUCTIONS: GroupSpec = GroupSpec {
     member_tags: &[tag::CLEARING_INSTRUCTION],
 };
 
+// ---------------------------------------------------------------------------
+// FIX 5.0 built-in group specs
+// Source: FIX 5.0 Volume 1 component-block tables (December 2006 spec)
+// ---------------------------------------------------------------------------
+
+/// NO_STRATEGY_PARAMETERS (957) — StrategyParameterName is the delimiter tag.
+pub const STRATEGY_PARAMETERS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_STRATEGY_PARAMETERS,
+    delimiter_tag: tag::STRATEGY_PARAMETER_NAME,
+    member_tags: &[
+        tag::STRATEGY_PARAMETER_NAME,
+        tag::STRATEGY_PARAMETER_TYPE,
+        tag::STRATEGY_PARAMETER_VALUE,
+    ],
+};
+
+/// NO_EXPIRATION (981) — ExpType is the delimiter tag.
+pub const EXPIRATION_QTY: GroupSpec = GroupSpec {
+    count_tag: tag::NO_EXPIRATION,
+    delimiter_tag: tag::EXP_TYPE,
+    member_tags: &[tag::EXP_TYPE, tag::EXP_QTY],
+};
+
+/// NO_UNDERLYING_AMOUNTS (984) — UnderlyingPayAmount is the delimiter tag.
+pub const UNDERLYING_AMOUNTS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_UNDERLYING_AMOUNTS,
+    delimiter_tag: tag::UNDERLYING_PAY_AMOUNT,
+    member_tags: &[
+        tag::UNDERLYING_PAY_AMOUNT,
+        tag::UNDERLYING_COLLECT_AMOUNT,
+        tag::UNDERLYING_SETTLEMENT_DATE,
+        tag::UNDERLYING_SETTLEMENT_STATUS,
+    ],
+};
+
+/// NO_SIDE_TRD_REG_TS (1016) — SideTrdRegTimestamp is the delimiter tag.
+pub const SIDE_TRD_REG_TS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_SIDE_TRD_REG_TS,
+    delimiter_tag: tag::SIDE_TRD_REG_TIMESTAMP,
+    member_tags: &[
+        tag::SIDE_TRD_REG_TIMESTAMP,
+        tag::SIDE_TRD_REG_TIMESTAMP_TYPE,
+        tag::SIDE_TRD_REG_TIMESTAMP_SRC,
+    ],
+};
+
+/// NO_INSTRUMENT_PARTIES (1018) — InstrumentPartyID is the delimiter tag.
+pub const INSTRUMENT_PARTIES: GroupSpec = GroupSpec {
+    count_tag: tag::NO_INSTRUMENT_PARTIES,
+    delimiter_tag: tag::INSTRUMENT_PARTY_ID,
+    member_tags: &[
+        tag::INSTRUMENT_PARTY_ID,
+        tag::INSTRUMENT_PARTY_ID_SOURCE,
+        tag::INSTRUMENT_PARTY_ROLE,
+        tag::NO_INSTRUMENT_PARTY_SUB_IDS,
+    ],
+};
+
+/// NO_INSTRUMENT_PARTY_SUB_IDS (1052) — InstrumentPartySubID is the delimiter tag.
+pub const INSTRUMENT_PARTY_SUB_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_INSTRUMENT_PARTY_SUB_IDS,
+    delimiter_tag: tag::INSTRUMENT_PARTY_SUB_ID,
+    member_tags: &[
+        tag::INSTRUMENT_PARTY_SUB_ID,
+        tag::INSTRUMENT_PARTY_SUB_ID_TYPE,
+    ],
+};
+
+/// NO_UNDLY_INSTRUMENT_PARTIES (1058) — UndlyInstrumentPartyID is the delimiter tag.
+pub const UNDLY_INSTRUMENT_PARTIES: GroupSpec = GroupSpec {
+    count_tag: tag::NO_UNDLY_INSTRUMENT_PARTIES,
+    delimiter_tag: tag::UNDLY_INSTRUMENT_PARTY_ID,
+    member_tags: &[
+        tag::UNDLY_INSTRUMENT_PARTY_ID,
+        tag::UNDLY_INSTRUMENT_PARTY_ID_SOURCE,
+        tag::UNDLY_INSTRUMENT_PARTY_ROLE,
+        tag::NO_UNDLY_INSTRUMENT_PARTY_SUB_IDS,
+    ],
+};
+
+/// NO_UNDLY_INSTRUMENT_PARTY_SUB_IDS (1062) — UndlyInstrumentPartySubID is the delimiter tag.
+pub const UNDLY_INSTRUMENT_PARTY_SUB_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_UNDLY_INSTRUMENT_PARTY_SUB_IDS,
+    delimiter_tag: tag::UNDLY_INSTRUMENT_PARTY_SUB_ID,
+    member_tags: &[
+        tag::UNDLY_INSTRUMENT_PARTY_SUB_ID,
+        tag::UNDLY_INSTRUMENT_PARTY_SUB_ID_TYPE,
+    ],
+};
+
+/// NO_ROOT_PARTY_IDS (1116) — RootPartyID is the delimiter tag.
+pub const ROOT_PARTIES: GroupSpec = GroupSpec {
+    count_tag: tag::NO_ROOT_PARTY_IDS,
+    delimiter_tag: tag::ROOT_PARTY_ID,
+    member_tags: &[
+        tag::ROOT_PARTY_ID,
+        tag::ROOT_PARTY_ID_SOURCE,
+        tag::ROOT_PARTY_ROLE,
+        tag::NO_ROOT_PARTY_SUB_IDS,
+    ],
+};
+
+/// NO_ROOT_PARTY_SUB_IDS (1120) — RootPartySubID is the delimiter tag.
+pub const ROOT_PARTY_SUB_IDS: GroupSpec = GroupSpec {
+    count_tag: tag::NO_ROOT_PARTY_SUB_IDS,
+    delimiter_tag: tag::ROOT_PARTY_SUB_ID,
+    member_tags: &[tag::ROOT_PARTY_SUB_ID, tag::ROOT_PARTY_SUB_ID_TYPE],
+};
+
 /// All built-in FIX 4.4 group specs (superset of `FIX42_GROUPS`).
 ///
 /// Includes all FIX 4.2 groups plus the groups introduced in FIX 4.4,
@@ -950,6 +1059,82 @@ pub const FIX42_GROUPS: &[&GroupSpec] = &[
     &BID_DESCRIPTORS,
     &BID_COMPONENTS,
     &STRIKES,
+];
+
+/// All built-in FIX 5.0 group specs (superset of `FIX44_GROUPS`).
+///
+/// Includes every FIX 4.2 and FIX 4.4 group plus the groups introduced in
+/// FIX 5.0. Existing 4.4 groups keep their 4.4 `member_tags` (which are
+/// informational only and never read by `GroupIter`).
+pub const FIX50_GROUPS: &[&GroupSpec] = &[
+    // -- FIX 4.2 groups (inherited) --
+    &ALLOCS,
+    &ORDERS,
+    &RPTS,
+    &DLVY_INST,
+    &EXECS,
+    &MISC_FEES,
+    &RELATED_SYM,
+    &IOI_QUALIFIERS,
+    &ROUTING_IDS,
+    &MD_ENTRY_TYPES,
+    &MD_ENTRIES,
+    &QUOTE_ENTRIES,
+    &QUOTE_SETS,
+    &CONTRA_BROKERS,
+    &MSG_TYPES,
+    &TRADING_SESSIONS,
+    &BID_DESCRIPTORS,
+    &BID_COMPONENTS,
+    &STRIKES,
+    // -- FIX 4.4 additions (inherited) --
+    &PARTY_IDS,
+    &SECURITY_ALT_IDS,
+    &UNDERLYING_SECURITY_ALT_IDS,
+    &REGIST_DTLS,
+    &DISTRIB_INSTS,
+    &CONT_AMTS,
+    &NESTED_PARTY_IDS,
+    &SIDES,
+    &SECURITY_TYPES,
+    &AFFECTED_ORDERS,
+    &LEGS,
+    &UNDERLYINGS,
+    &POSITIONS,
+    &QUOTE_QUALIFIERS,
+    &POS_AMTS,
+    &NESTED2_PARTY_IDS,
+    &TRD_REG_TIMESTAMPS,
+    &SETTL_INST,
+    &SETTL_PARTY_IDS,
+    &PARTY_SUB_IDS,
+    &NESTED_PARTY_SUB_IDS,
+    &NESTED2_PARTY_SUB_IDS,
+    &ALT_MD_SOURCES,
+    &CAPACITIES,
+    &EVENTS,
+    &INSTR_ATTRIB,
+    &UNDERLYING_STIPS,
+    &TRADES,
+    &COMP_IDS,
+    &COLL_INQUIRY_QUALIFIERS,
+    &NESTED3_PARTY_IDS,
+    &LEG_SECURITY_ALT_IDS,
+    &LEG_STIPULATIONS,
+    &LEG_ALLOCS,
+    &HOPS,
+    &CLEARING_INSTRUCTIONS,
+    // -- FIX 5.0 additions --
+    &STRATEGY_PARAMETERS,
+    &EXPIRATION_QTY,
+    &UNDERLYING_AMOUNTS,
+    &SIDE_TRD_REG_TS,
+    &INSTRUMENT_PARTIES,
+    &INSTRUMENT_PARTY_SUB_IDS,
+    &UNDLY_INSTRUMENT_PARTIES,
+    &UNDLY_INSTRUMENT_PARTY_SUB_IDS,
+    &ROOT_PARTIES,
+    &ROOT_PARTY_SUB_IDS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -1125,6 +1310,17 @@ mod tests {
         s.bytes()
             .map(|b| if b == b'|' { 0x01 } else { b })
             .collect()
+    }
+
+    // -----------------------------------------------------------------------
+    // Built-in group spec arrays
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn group_array_sizes_are_expected() {
+        assert_eq!(FIX42_GROUPS.len(), 19);
+        assert_eq!(FIX44_GROUPS.len(), 55);
+        assert_eq!(FIX50_GROUPS.len(), 65);
     }
 
     // -----------------------------------------------------------------------
