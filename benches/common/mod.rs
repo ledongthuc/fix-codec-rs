@@ -13,7 +13,7 @@ use smallvec::SmallVec;
 
 use fix_codec_rs::error::FixError;
 use fix_codec_rs::message::Message;
-use fix_codec_rs::tag::{self, parse_tag, Tag};
+use fix_codec_rs::tag::{self, Tag, parse_tag};
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -110,7 +110,9 @@ pub struct VecDecoder {
 
 impl VecDecoder {
     pub fn new() -> Self {
-        Self { offsets: Vec::new() }
+        Self {
+            offsets: Vec::new(),
+        }
     }
 
     /// Decode `buf`, returning the sum of parsed tags (a value that forces all
@@ -165,10 +167,7 @@ impl SmallVecEncoder {
 
         self.body.clear();
         for f in msg.fields() {
-            if f.tag == tag::BEGIN_STRING
-                || f.tag == tag::BODY_LENGTH
-                || f.tag == tag::CHECK_SUM
-            {
+            if f.tag == tag::BEGIN_STRING || f.tag == tag::BODY_LENGTH || f.tag == tag::CHECK_SUM {
                 continue;
             }
             let (digits, pos) = u32_to_ascii(f.tag);
@@ -224,10 +223,7 @@ impl VecEncoder {
 
         self.body.clear();
         for f in msg.fields() {
-            if f.tag == tag::BEGIN_STRING
-                || f.tag == tag::BODY_LENGTH
-                || f.tag == tag::CHECK_SUM
-            {
+            if f.tag == tag::BEGIN_STRING || f.tag == tag::BODY_LENGTH || f.tag == tag::CHECK_SUM {
                 continue;
             }
             let (digits, pos) = u32_to_ascii(f.tag);

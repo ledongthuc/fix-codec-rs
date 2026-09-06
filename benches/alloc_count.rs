@@ -204,7 +204,10 @@ fn main() {
     );
 
     println!("\nheap allocations per message (averaged over {ITERS} iterations)");
-    println!("{:<22} {:>8} {:>10} {:>10}", "scenario", "small", "typical", "large");
+    println!(
+        "{:<22} {:>8} {:>10} {:>10}",
+        "scenario", "small", "typical", "large"
+    );
     println!("{:-<22} {:-<8} {:-<10} {:-<10}", "", "", "", "");
 
     print_row("decode cold  smallvec", decode_cold_smallvec());
