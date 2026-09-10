@@ -1,5 +1,3 @@
-use std::cell::OnceCell;
-
 use crate::body_length::parse_body_length;
 use crate::checksum::{compute_checksum, parse_checksum};
 use crate::error::FixError;
@@ -13,9 +11,8 @@ use crate::version::{self, FixVersion};
 /// Zero-copy: field values are sub-slices of the original input buffer — no
 /// bytes are copied when accessing fields.
 ///
-/// The sorted tag index for [`find`] is built lazily on the first call and
-/// cached for the lifetime of the message. This means `decode()` pays no sort
-/// cost when you never call `find()`, and pays it at most once when you do.
+/// [`find`] and [`find_all`] are linear scans over the wire-order offsets; the
+/// message holds no tag index.
 #[derive(Debug)]
 pub struct Message<'a> {
     /// The raw bytes of the complete FIX message as received (e.g. the network
@@ -34,25 +31,12 @@ pub struct Message<'a> {
     /// The slice is borrowed from the `Decoder`'s internal `Vec`, so it
     /// lives as long as `'a`.
     pub(crate) offsets: &'a [(Tag, u32, u32)],
-
-    /// Sorted (tag, offsets_index) pairs for O(log n) binary search in find().
-    ///
-    /// Built lazily on the first call to `find()` and cached for the lifetime
-    /// of the message via `OnceCell`. Never allocated if `find()` is never
-    /// called, and built at most once regardless of how many times `find()` is
-    /// called.
-    sorted: OnceCell<Vec<(Tag, u16)>>,
 }
 
 impl<'a> Message<'a> {
     /// Create a new message from a buffer and an offset slice.
-    /// The sorted index starts uninitialized and is built lazily on first find().
     pub(crate) fn new(buf: &'a [u8], offsets: &'a [(Tag, u32, u32)]) -> Self {
-        Self {
-            buf,
-            offsets,
-            sorted: OnceCell::new(),
-        }
+        Self { buf, offsets }
     }
 
     /// Number of fields in the message.
@@ -125,30 +109,24 @@ impl<'a> Message<'a> {
 
     /// Find the first field with the given tag, or `None` if not present.
     ///
-    /// The sorted index is built lazily on the first call (O(n log n)) and
-    /// cached for subsequent calls (O(log n) binary search). If `find()` is
-    /// never called, the sort never happens.
+    /// Linear scan over the wire-order offsets. When a tag appears more than
+    /// once this returns the **first occurrence in wire order**.
     #[inline]
     pub fn find(&self, tag: Tag) -> Option<Field<'a>> {
-        let sorted = self.sorted.get_or_init(|| {
-            let mut v: Vec<(Tag, u16)> = Vec::with_capacity(self.offsets.len());
-            for (i, &(t, _, _)) in self.offsets.iter().enumerate() {
-                v.push((t, i as u16));
-            }
-            v.sort_unstable_by_key(|&(t, _)| t);
-            v
-        });
+        self.find_all(tag).next()
+    }
 
-        let idx = sorted.partition_point(|&(t, _)| t < tag);
-        let &(found_tag, offset_idx) = sorted.get(idx)?;
-        if found_tag != tag {
-            return None;
+    /// Return an iterator over every field with the given tag, in wire order,
+    /// or an empty iterator if the tag is absent.
+    ///
+    /// Linear scan over the wire-order offsets.
+    #[inline]
+    pub fn find_all(&self, tag: Tag) -> FieldsByTag<'a> {
+        FieldsByTag {
+            buf: self.buf,
+            offsets: self.offsets,
+            tag,
         }
-        let (t, start, end) = self.offsets[offset_idx as usize];
-        Some(Field {
-            tag: t,
-            value: &self.buf[start as usize..end as usize],
-        })
     }
 
     /// Return an iterator over the instances of the repeating group described
@@ -328,5 +306,35 @@ impl<'a> Message<'a> {
             }
             Some((spec, self.groups(spec)))
         })
+    }
+}
+
+/// Iterator over every occurrence of a single tag, in original wire order.
+///
+/// Produced by [`Message::find_all`]. It walks the offset slice linearly,
+/// advancing past each match.
+pub struct FieldsByTag<'a> {
+    buf: &'a [u8],
+    offsets: &'a [(Tag, u32, u32)],
+    tag: Tag,
+}
+
+impl<'a> Iterator for FieldsByTag<'a> {
+    type Item = Field<'a>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Field<'a>> {
+        let pos = self.offsets.iter().position(|&(t, _, _)| t == self.tag)?;
+        let (tag, start, end) = self.offsets[pos];
+        self.offsets = &self.offsets[pos + 1..];
+        Some(Field {
+            tag,
+            value: &self.buf[start as usize..end as usize],
+        })
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(self.offsets.len()))
     }
 }

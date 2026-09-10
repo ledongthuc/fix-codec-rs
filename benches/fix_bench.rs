@@ -61,101 +61,6 @@ fn bench_decode(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
-// Sorted-index cost/benefit: how many find() calls does it take to break even?
-//
-// The sorted_index is built on every decode() call — it costs time even when
-// you never call find(). These benchmarks isolate that trade-off by measuring:
-//   - decode with 0 find() calls  → sorted_index is pure overhead
-//   - decode with 1..N find() calls → sorted_index starts paying off
-//
-// The "linear" variants simulate what the code would do WITHOUT a sorted index
-// (iterate offsets from the start) so we can compute the break-even point.
-// ---------------------------------------------------------------------------
-
-fn bench_sorted_vs_linear(c: &mut Criterion) {
-    use fix_codec_rs::tag;
-
-    // Use the exec-report message (14 fields) as the representative case.
-    // It's large enough that the sort cost and the linear-scan savings are both visible.
-    let msg_bytes = MSG_EXEC;
-
-    let mut group = c.benchmark_group("sorted_vs_linear");
-    group.throughput(Throughput::Bytes(msg_bytes.len() as u64));
-
-    // ---- Baseline: decode only, zero find() calls ----
-    // This measures the pure cost of building sorted_index that is never used.
-    group.bench_function("decode_only_0finds", |b| {
-        let mut dec = Decoder::new();
-        b.iter(|| {
-            let msg = dec.decode(black_box(msg_bytes)).unwrap();
-            black_box(msg.len()) // prevent dead-code elimination
-        });
-    });
-
-    // ---- find() calls using the binary-search sorted index (current impl) ----
-    for n_finds in [1usize, 2, 4, 6, 8] {
-        // Tags to look up, in a realistic order for an ExecutionReport.
-        let tags = [
-            tag::SYMBOL,         // 55
-            tag::SIDE,           // 54
-            tag::ORDER_QTY,      // 38
-            tag::PRICE,          // 44
-            tag::MSG_SEQ_NUM,    // 34
-            tag::SENDER_COMP_ID, // 49
-            tag::CL_ORD_ID,      // 11
-            tag::ORD_STATUS,     // 39
-        ];
-        let label = format!("binary_search_{}finds", n_finds);
-        group.bench_function(&label, |b| {
-            let mut dec = Decoder::new();
-            b.iter(|| {
-                let msg = dec.decode(black_box(msg_bytes)).unwrap();
-                let mut total = 0usize;
-                for &t in &tags[..n_finds] {
-                    total += msg.find(t).map(|f| f.value.len()).unwrap_or(0);
-                }
-                black_box(total)
-            });
-        });
-    }
-
-    // ---- Simulated linear scan (what find() would cost WITHOUT sorted index) ----
-    // We iterate over msg.fields() manually and match tags, mirroring O(n) find().
-    for n_finds in [1usize, 2, 4, 6, 8] {
-        let tags = [
-            tag::SYMBOL,
-            tag::SIDE,
-            tag::ORDER_QTY,
-            tag::PRICE,
-            tag::MSG_SEQ_NUM,
-            tag::SENDER_COMP_ID,
-            tag::CL_ORD_ID,
-            tag::ORD_STATUS,
-        ];
-        let label = format!("linear_scan_{}finds", n_finds);
-        group.bench_function(&label, |b| {
-            let mut dec = Decoder::new();
-            b.iter(|| {
-                let msg = dec.decode(black_box(msg_bytes)).unwrap();
-                let mut total = 0usize;
-                for &t in &tags[..n_finds] {
-                    // Manual O(n) scan — mimics find() without a sorted index.
-                    for f in msg.fields() {
-                        if f.tag == t {
-                            total += f.value.len();
-                            break;
-                        }
-                    }
-                }
-                black_box(total)
-            });
-        });
-    }
-
-    group.finish();
-}
-
-// ---------------------------------------------------------------------------
 // Decode + field access benchmarks
 // ---------------------------------------------------------------------------
 
@@ -202,6 +107,35 @@ fn bench_decode_and_find(c: &mut Criterion) {
             black_box(count)
         });
     });
+
+    group.finish();
+}
+
+// ---------------------------------------------------------------------------
+// Lazy field iteration (decode_fields)
+// ---------------------------------------------------------------------------
+
+fn bench_decode_fields(c: &mut Criterion) {
+    let mut group = c.benchmark_group("decode_fields");
+
+    for (name, msg) in [
+        ("tiny_1field", MSG_TINY),
+        ("order_8fields", MSG_ORDER),
+        ("exec_report_12fields", MSG_EXEC),
+        ("market_data_20fields", MSG_MARKET_DATA),
+    ] {
+        group.throughput(Throughput::Bytes(msg.len() as u64));
+        group.bench_with_input(BenchmarkId::new("iterate", name), msg, |b, msg| {
+            let dec = Decoder::new();
+            b.iter(|| {
+                let mut total = 0usize;
+                for field in dec.decode_fields(black_box(msg)) {
+                    total += field.unwrap().value.len();
+                }
+                black_box(total)
+            });
+        });
+    }
 
     group.finish();
 }
@@ -314,10 +248,10 @@ fn bench_fix50_groups(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_decode,
+    bench_decode_fields,
     bench_decode_and_find,
     bench_encode,
     bench_roundtrip,
-    bench_sorted_vs_linear,
     bench_fix50_groups,
 );
 criterion_main!(benches);

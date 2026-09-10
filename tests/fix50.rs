@@ -244,3 +244,17 @@ fn encoder_keeps_default_version_when_tag8_absent() {
     let msg2 = dec.decode(&out).unwrap();
     assert_eq!(msg2.resolve_version(), Some(FixVersion::Fix44));
 }
+
+#[test]
+fn fixt_find_and_find_all_on_repeated_tag() {
+    // Exercises `find`/`find_all` end-to-end: a single-tag `find` (`APPL_VER_ID`)
+    // plus `find_all` over a repeated tag in wire order.
+    let raw = fixt("35=A|1128=7|49=S|56=T|34=1|384=2|372=D|372=8");
+    let mut dec = Decoder::new();
+    let msg = dec.decode(&raw).unwrap();
+
+    assert_eq!(msg.find(tag::APPL_VER_ID).unwrap().value, b"7");
+
+    let ref_msg_types: Vec<_> = msg.find_all(tag::REF_MSG_TYPE).map(|f| f.value).collect();
+    assert_eq!(ref_msg_types, vec![&b"D"[..], &b"8"[..]]);
+}

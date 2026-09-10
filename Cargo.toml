@@ -1,6 +1,6 @@
 [package]
 name = "fix-codec-rs"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "High-performance FIX protocol encoder/decoder library"
 license = "MIT"
@@ -20,6 +20,10 @@ harness = false
 
 [[bench]]
 name = "alloc_count"
+harness = false
+
+[[bench]]
+name = "index_vs_linear"
 harness = false
 
 [profile.bench]

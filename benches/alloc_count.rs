@@ -1,8 +1,12 @@
-//! Allocation-count benchmark for the library's `Vec`-backed `Decoder`/`Encoder`.
+//! Allocation-count benchmark for the library's `Decoder`/`Encoder`.
 //!
 //! This uses a counting global allocator to report the *actual* number of heap
 //! allocations per message.
 //! Run with: `cargo bench --bench alloc_count`
+//!
+//! `Decoder::decode` is allocation-free in steady state (the field-offset `Vec`
+//! is cleared and reused); `decode_fields` (lazy iteration) stores nothing and
+//! is also allocation-free.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
@@ -73,6 +77,21 @@ fn decode_reuse() -> [u64; 3] {
     })
 }
 
+fn decode_fields() -> [u64; 3] {
+    per_fixture(|buf| {
+        let dec = Decoder::new();
+        allocs(|| {
+            for _ in 0..ITERS {
+                let mut total = 0usize;
+                for field in dec.decode_fields(black_box(buf)) {
+                    total += field.unwrap().value.len();
+                }
+                black_box(total);
+            }
+        }) / ITERS
+    })
+}
+
 fn encode_cold() -> [u64; 3] {
     per_fixture(|buf| {
         let mut dec = Decoder::new();
@@ -126,7 +145,7 @@ fn main() {
 
     println!("\nstruct sizes (bytes)");
     println!(
-        "  Decoder (Vec<(Tag,u32,u32)>): {}",
+        "  Decoder (Vec only):            {}",
         std::mem::size_of::<Decoder>()
     );
     println!(
@@ -143,6 +162,7 @@ fn main() {
 
     print_row("decode cold", decode_cold());
     print_row("decode reuse", decode_reuse());
+    print_row("decode_fields", decode_fields());
     print_row("encode cold", encode_cold());
     print_row("encode reuse", encode_reuse());
 }

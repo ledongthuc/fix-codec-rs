@@ -1,34 +1,42 @@
 use memchr::memchr;
 
 use crate::error::FixError;
-use crate::field::{FIELD_KEY_VALUE_SEPARATOR, FIELD_SEPARATOR};
+use crate::field::{FIELD_KEY_VALUE_SEPARATOR, FIELD_SEPARATOR, Field};
 use crate::message::Message;
 use crate::tag::{Tag, parse_tag};
 
 /// A reusable FIX message decoder.
 ///
-/// Owns a `Vec` buffer that is allocated once (at startup or first use)
-/// and reused across every `decode` call — zero allocation per message on the
-/// hot path.
+/// Owns one reusable buffer, allocated once (at startup or first use) and
+/// reused across every `decode` call:
 ///
-/// Stores `(tag, value_start, value_end)` byte offsets rather than slices,
-/// eliminating all unsafe lifetime transmutes while preserving zero-allocation
-/// and zero-copy semantics.
+/// - `offsets` — a `Vec<(Tag, value_start, value_end)>`, cleared per decode and
+///   reused without reallocating (capacity preserved).
+///
+/// `find`/`find_all` are linear scans over `offsets`; there is no tag index.
+///
+/// There are two entry points:
+///
+/// - [`Decoder::decode`] — parses the full message, returning a [`Message`]
+///   that supports `find`/`find_all`, field iteration, groups, and validation.
+/// - [`Decoder::decode_fields`] — a lazy iterator that parses one field per
+///   `next()` from a complete buffer, storing no offsets. It is
+///   allocation-free and is *not* resumable/incremental.
 ///
 /// # Example
 /// ```ignore
 /// let mut decoder = Decoder::new();
 ///
 /// loop {
-///     let msg = decoder.decode(buf)?;  // zero allocation after first call
+///     let msg = decoder.decode(buf)?;
 ///     process(msg);
-///     // msg dropped here — decoder buffer ready for next call
+///     // msg dropped here — decoder buffers ready for next call
 /// }
 /// ```
 pub struct Decoder {
     /// Stores (tag, value_start_offset, value_end_offset) per field.
     /// clear() at the start of each decode call preserves allocated capacity —
-    /// no free/malloc on the hot path.
+    /// no free/malloc for offsets on the hot path.
     offsets: Vec<(Tag, u32, u32)>,
 }
 
@@ -47,8 +55,8 @@ impl Decoder {
     }
 
     /// Create a new decoder pre-allocated for `capacity` fields.
-    /// Use this to avoid reallocations when messages consistently contain many
-    /// fields (e.g. MarketData).
+    /// Use this to avoid offset reallocations when messages consistently contain
+    /// many fields (e.g. MarketData).
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             offsets: Vec::with_capacity(capacity),
@@ -57,21 +65,38 @@ impl Decoder {
 
     /// Decode a raw FIX byte buffer into a `Message`.
     ///
-    /// Clears and reuses the internal offset buffer — zero allocation per call
-    /// after the first. The returned `Message<'a>` borrows both from `self`
-    /// (the offset slice) and from `buf` (the raw bytes). Drop `Message`
-    /// before calling `decode` again.
-    ///
-    /// The sorted tag index used by [`Message::find`] is built lazily on the
-    /// first `find()` call and cached for the message lifetime. If `find()` is
-    /// never called, no sort ever happens.
+    /// Parses all fields into the reusable offset buffer. Allocation-free in
+    /// steady state (the offset `Vec` is cleared and reused). The returned
+    /// [`Message`] borrows from `self` (offset slice) and from `buf` (raw
+    /// bytes). Drop `Message` before calling `decode` again.
     ///
     /// # Errors
     /// - `FixError::IncompleteMessage` — the buffer contains a partial field
     ///   (no `=` or no SOH delimiter found); buffer more bytes before retrying.
     /// - `FixError::InvalidTag` — a tag contained non-digit bytes or overflowed `u32`.
     pub fn decode<'a>(&'a mut self, buf: &'a [u8]) -> Result<Message<'a>, FixError> {
-        // clear() keeps existing capacity — no allocator call on hot path
+        self.parse_offsets(buf)?;
+        Ok(Message::new(buf, self.offsets.as_slice()))
+    }
+
+    /// Return a lazy iterator over the fields of a complete FIX message.
+    ///
+    /// Each [`FieldsIter::next`] parses one field from `buf`; no offsets and no
+    /// index are stored, and only `buf` is borrowed. This is *not*
+    /// resumable/incremental — `buf` must be a complete message. On a parse
+    /// error the offending item is yielded as `Err(..)` and the iterator is
+    /// fused (subsequent `next()` returns `None`).
+    ///
+    /// Empty buffers yield an empty iterator (no error).
+    #[inline]
+    pub fn decode_fields<'a>(&self, buf: &'a [u8]) -> FieldsIter<'a> {
+        FieldsIter { buf, pos: 0 }
+    }
+
+    /// Parse every field in `buf` into `self.offsets`.
+    fn parse_offsets(&mut self, buf: &[u8]) -> Result<(), FixError> {
+        // clear() keeps existing capacity — no allocator call for offsets on
+        // the hot path.
         self.offsets.clear();
 
         let mut pos = 0;
@@ -96,9 +121,61 @@ impl Decoder {
             pos = soh_pos + 1;
         }
 
-        // Both borrows are genuinely 'a: offsets from &'a mut self, buf from
-        // &'a [u8]. No transmutes, no unsafe.
-        Ok(Message::new(buf, self.offsets.as_slice()))
+        Ok(())
+    }
+}
+
+/// A lazy, fused iterator over the fields of a complete FIX message.
+///
+/// Produced by [`Decoder::decode_fields`]. Each `next()` parses one field on
+/// demand from the borrowed buffer. It stores no offsets and no index, and is
+/// not resumable — `buf` must be a complete message.
+pub struct FieldsIter<'a> {
+    buf: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Iterator for FieldsIter<'a> {
+    type Item = Result<Field<'a>, FixError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos >= self.buf.len() {
+            return None;
+        }
+
+        // Scan for '=' — delimits tag from value.
+        let eq_pos = match memchr(FIELD_KEY_VALUE_SEPARATOR, &self.buf[self.pos..]) {
+            Some(off) => off + self.pos,
+            None => {
+                self.pos = self.buf.len();
+                return Some(Err(FixError::IncompleteMessage));
+            }
+        };
+
+        // Parse the tag; on error, fuse and surface the error once.
+        let tag = match parse_tag(&self.buf[self.pos..eq_pos]) {
+            Ok(tag) => tag,
+            Err(err) => {
+                self.pos = self.buf.len();
+                return Some(Err(err));
+            }
+        };
+
+        // Scan for SOH (0x01) — delimits end of value.
+        let soh_pos = match memchr(FIELD_SEPARATOR, &self.buf[eq_pos + 1..]) {
+            Some(off) => off + eq_pos + 1,
+            None => {
+                self.pos = self.buf.len();
+                return Some(Err(FixError::IncompleteMessage));
+            }
+        };
+
+        let field = Field {
+            tag,
+            value: &self.buf[eq_pos + 1..soh_pos],
+        };
+        self.pos = soh_pos + 1;
+        Some(Ok(field))
     }
 }
 
@@ -908,5 +985,188 @@ mod tests {
             .unwrap();
         assert!(msg.validate_body_length().is_ok());
         assert!(msg.validate_checksum().is_ok());
+    }
+
+    // -------------------------------------------------------------------------
+    // Group 11 — decode_fields (lazy field iteration)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn decode_fields_empty_buffer() {
+        let dec = Decoder::new();
+        let mut iter = dec.decode_fields(b"");
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn decode_fields_multiple_fields() {
+        let dec = Decoder::new();
+        let fields: Vec<_> = dec
+            .decode_fields(b"8=FIX.4.2\x0135=D\x0149=SENDER\x01")
+            .map(|f| f.unwrap())
+            .collect();
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].tag, 8);
+        assert_eq!(fields[0].value, b"FIX.4.2");
+        assert_eq!(fields[1].tag, 35);
+        assert_eq!(fields[1].value, b"D");
+        assert_eq!(fields[2].tag, 49);
+        assert_eq!(fields[2].value, b"SENDER");
+    }
+
+    #[test]
+    fn decode_fields_empty_value() {
+        let dec = Decoder::new();
+        let fields: Vec<_> = dec.decode_fields(b"35=\x01").map(|f| f.unwrap()).collect();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].tag, 35);
+        assert_eq!(fields[0].value, b"");
+    }
+
+    #[test]
+    fn decode_fields_value_containing_equals() {
+        let dec = Decoder::new();
+        let fields: Vec<_> = dec
+            .decode_fields(b"58=price=100\x0135=D\x01")
+            .map(|f| f.unwrap())
+            .collect();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].tag, 58);
+        assert_eq!(fields[0].value, b"price=100");
+        assert_eq!(fields[1].tag, 35);
+        assert_eq!(fields[1].value, b"D");
+    }
+
+    #[test]
+    fn decode_fields_binary_value() {
+        let dec = Decoder::new();
+        let fields: Vec<_> = dec
+            .decode_fields(b"95=3\x0196=\x02\x03\x04\x01")
+            .map(|f| f.unwrap())
+            .collect();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[1].tag, 96);
+        assert_eq!(fields[1].value, &[0x02u8, 0x03, 0x04]);
+    }
+
+    #[test]
+    fn decode_fields_incomplete_tag_no_equals() {
+        let dec = Decoder::new();
+        let mut iter = dec.decode_fields(b"8");
+        assert!(matches!(
+            iter.next(),
+            Some(Err(FixError::IncompleteMessage))
+        ));
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn decode_fields_invalid_tag() {
+        let dec = Decoder::new();
+        let mut iter = dec.decode_fields(b"8X=val\x01");
+        assert!(matches!(iter.next(), Some(Err(FixError::InvalidTag))));
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn decode_fields_incomplete_mid_stream() {
+        let dec = Decoder::new();
+        let mut iter = dec.decode_fields(b"8=FIX.4.2\x0135");
+        let first = iter.next().unwrap().unwrap();
+        assert_eq!(first.tag, 8);
+        assert_eq!(first.value, b"FIX.4.2");
+        assert!(matches!(
+            iter.next(),
+            Some(Err(FixError::IncompleteMessage))
+        ));
+        assert!(iter.next().is_none());
+    }
+
+    #[test]
+    fn decode_fields_33_fields() {
+        let dec = Decoder::new();
+        let mut buf = Vec::new();
+        for i in 1u32..=33 {
+            buf.extend_from_slice(format!("{}=v\x01", i).as_bytes());
+        }
+        let fields: Vec<_> = dec.decode_fields(&buf).map(|f| f.unwrap()).collect();
+        assert_eq!(fields.len(), 33);
+        assert_eq!(fields[32].tag, 33);
+    }
+
+    #[test]
+    fn decode_matches_decode_fields() {
+        let mut dec = Decoder::new();
+        let buf = b"8=FIX.4.2\x0135=D\x0149=SENDER\x0156=TARGET\x0111=ORD1\x0155=AAPL\x01";
+        let msg = dec.decode(buf).unwrap();
+        let from_decode: Vec<(u32, Vec<u8>)> =
+            msg.fields().map(|f| (f.tag, f.value.to_vec())).collect();
+        let from_iter: Vec<(u32, Vec<u8>)> = dec
+            .decode_fields(buf)
+            .map(|f| {
+                let f = f.unwrap();
+                (f.tag, f.value.to_vec())
+            })
+            .collect();
+        assert_eq!(from_decode, from_iter);
+    }
+
+    // -------------------------------------------------------------------------
+    // Group 12 — find()/find_all() behavior
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn decode_find_returns_first_duplicate() {
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"372=D\x01372=8\x01").unwrap();
+        assert_eq!(msg.find(372).unwrap().value, b"D");
+    }
+
+    #[test]
+    fn decode_find_all_duplicates_in_order() {
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"372=D\x01372=8\x01372=9\x01").unwrap();
+        let values: Vec<_> = msg.find_all(372).map(|f| f.value).collect();
+        assert_eq!(values, vec![&b"D"[..], &b"8"[..], &b"9"[..]]);
+    }
+
+    #[test]
+    fn decode_find_absent_tag() {
+        let mut dec = Decoder::new();
+        let msg = dec.decode(b"35=D\x01").unwrap();
+        assert!(msg.find(8).is_none());
+        assert_eq!(msg.find_all(8).count(), 0);
+    }
+
+    #[test]
+    fn decode_reuse_no_stale_state() {
+        let mut dec = Decoder::new();
+        {
+            let msg = dec.decode(b"8=FIX.4.2\x0135=D\x01").unwrap();
+            assert!(msg.find(8).is_some());
+            assert!(msg.find(49).is_none());
+        }
+        {
+            let msg = dec.decode(b"49=SENDER\x0156=TARGET\x01").unwrap();
+            assert!(msg.find(49).is_some());
+            assert!(msg.find(8).is_none());
+            assert!(msg.find(35).is_none());
+        }
+    }
+
+    #[test]
+    fn decode_find_reflects_current_message() {
+        let mut dec = Decoder::new();
+        {
+            let msg = dec.decode(b"8=FIX.4.2\x0135=D\x0149=A\x01").unwrap();
+            assert_eq!(msg.find(49).unwrap().value, b"A");
+        }
+        {
+            let msg = dec.decode(b"49=B\x0156=TARGET\x01").unwrap();
+            assert_eq!(msg.find(49).unwrap().value, b"B");
+            let tags: Vec<_> = msg.fields().map(|f| f.tag).collect();
+            assert_eq!(tags, vec![49, 56]);
+            assert_eq!(msg.find_all(56).count(), 1);
+        }
     }
 }

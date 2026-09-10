@@ -8,11 +8,12 @@ Tested with FIX versions 4.2, 4.4, and 5.0
 
 ## Features
 
-- **Zero-copy decoding** — field values are byte slices into the original buffer, no allocation on the hot path
+- **Zero-copy decoding** — field values are byte slices into the original buffer
 - **Reusable decoder/encoder** — single instance across thousands of messages, amortizes allocation cost
-- **Reusable internal buffers** — decoder/encoder hold `Vec` buffers that are cleared and reused across messages, avoiding per-message allocation
+- **Reusable internal buffers** — the decoder's field-offset `Vec` and the encoder's body `Vec` are cleared and reused across messages
 - **SIMD-accelerated scanning** — uses `memchr` for fast `=` and SOH delimiter search
-- **Lazy sorted index** — O(log n) `find()` via binary search, built only on first use
+- **Allocation-free `decode`** — `find()`/`find_all()` are linear scans over a reused offset buffer (no index)
+- **Lazy field iteration** — `decode_fields()` parses one field per `next()` with no storage and no allocation
 - **Repeating groups** — full support for nested groups, FIX 4.2, FIX 4.4, and FIX 5.0 specifications
 - **Auto checksum/body length** — automatic tag 9 and tag 10 computation during encoding (toggleable)
 - **1100+ tag constants** — comprehensive coverage of FIX 4.2, FIX 4.4, and FIX 5.0 tag definitions
@@ -27,7 +28,7 @@ Or add to your `Cargo.toml` manually:
 
 ```toml
 [dependencies]
-fix-codec-rs = "0.2.0"
+fix-codec-rs = "0.3.0"
 ```
 
 ## Usage
@@ -44,23 +45,51 @@ fn main() {
 
     let raw = b"8=FIX.4.2\x019=73\x0135=D\x0149=CLIENT\x0156=BROKER\x0134=1\x0152=20240101-12:00:00\x0111=ORD001\x0155=AAPL\x0154=1\x0138=100\x0144=150.00\x0140=2\x0110=128\x01";
 
-    let msg = decoder.decode(raw).unwrap();
+    // Full decode: reuses the offset buffer; allocation-free in steady state.
+    {
+        let msg = decoder.decode(raw).unwrap();
 
-    // Access fields by index (O(1))
-    for field in msg.fields() {
-        println!("Tag {}: {:?}", field.tag, field.value);
-    }
+        // Access fields in wire order
+        for field in msg.fields() {
+            println!("Tag {}: {:?}", field.tag, field.value);
+        }
 
-    // Lookup by tag (O(log n) binary search, index built lazily on first call)
-    if let Some(field) = msg.find(tag::SYMBOL) {
-        println!("Symbol: {}", std::str::from_utf8(field.value).unwrap());
-    }
+        // Lookup by tag (linear scan over the wire-order offsets)
+        if let Some(field) = msg.find(tag::SYMBOL) {
+            println!("Symbol: {}", std::str::from_utf8(field.value).unwrap());
+        }
 
-    if let Some(field) = msg.find(tag::ORDER_QTY) {
-        println!("Qty: {}", std::str::from_utf8(field.value).unwrap());
+        if let Some(field) = msg.find(tag::ORDER_QTY) {
+            println!("Qty: {}", std::str::from_utf8(field.value).unwrap());
+        }
+
+        // Every occurrence of a repeated tag, in original wire order
+        for field in msg.find_all(tag::TEXT) {
+            println!("Text: {:?}", field.value);
+        }
+    } // msg dropped here — the decoder can be reused
+
+    // Lazy iteration: one field per next(), no offsets, no allocation.
+    // `buf` must be a complete message; this is not resumable/incremental.
+    for field in decoder.decode_fields(raw) {
+        match field {
+            Ok(f) => println!("Tag {}: {:?}", f.tag, f.value),
+            Err(e) => eprintln!("parse error: {:?}", e),
+        }
     }
 }
 ```
+
+### Choosing an API
+
+- **`decode_fields`** — lazy field iteration. Parses one field per `next()`,
+  stores no offsets, borrows only the input buffer, and is allocation-free. Use
+  it when you only need to walk fields and never look up by tag (and can
+  re-parse the complete buffer from scratch on error).
+- **`decode`** — full zero-copy view (`fields`/`groups`/validation) plus
+  `find`/`find_all`, which are linear scans over the wire-order offsets. The
+  offset `Vec` is cleared and reused, so this path is allocation-free in steady
+  state. Use it when you need tag lookups, groups, or validation.
 
 ### Decoding with Validation
 
@@ -201,59 +230,92 @@ averaged over 100 000 iterations.
 |-----------------|------------------|---------------------|--------------------|
 | decode cold     | 1                | 3                   | 6                  |
 | decode reuse    | 0                | 0                   | 0                  |
+| decode_fields   | 0                | 0                   | 0                  |
 | encode cold     | 1                | 5                   | 9                  |
 | encode reuse    | 0                | 0                   | 0                  |
 
-A fresh `Decoder`/`Encoder` allocates as its internal `Vec` grows to fit the
-message. Reused instances `clear()` their buffers while preserving capacity, so
-steady-state encode/decode performs zero allocations. Struct sizes: `Decoder`
-is 24 B and `Encoder` is 32 B.
+A fresh `Decoder` allocates only as its offset `Vec` grows to fit `decode`
+(geometric growth: 1 / 3 / 6 allocations for the 4 / 14 / 100 field fixtures).
+On reuse the `Vec` is cleared (capacity preserved), so `decode` is
+allocation-free in steady state. `decode_fields` (which stores nothing) and
+steady-state `encode` are also allocation-free. Struct sizes: `Decoder` is 24 B
+and `Encoder` is 32 B.
 
 ### Decode throughput
 
+| Message                    | Time    | Throughput   |
+|----------------------------|---------|--------------|
+| Tiny (26 B)                | 13.9 ns | 1787.1 MiB/s |
+| New Order Single (118 B)   | 119.1 ns| 944.8 MiB/s  |
+| Execution Report (162 B)   | 169.2 ns| 913.1 MiB/s  |
+| Market Data Snapshot (189 B)| 181.2 ns| 994.7 MiB/s  |
+| FIX 5.0 RootParties (129 B) | 142.7 ns| 861.9 MiB/s  |
+
+### `decode_fields` throughput (lazy iteration)
+
 | Message                    | Time    | Throughput  |
 |----------------------------|---------|-------------|
-| Tiny (26 B)                | 14.6 ns | 1.66 GiB/s  |
-| New Order Single (118 B)   | 122.2 ns| 920.6 MiB/s |
-| Execution Report (162 B)   | 170.6 ns| 905.6 MiB/s |
-| Market Data Snapshot (189 B) | 180.0 ns| 1001.1 MiB/s |
-| FIX 5.0 RootParties (129 B) | 145.9 ns| 843.3 MiB/s |
+| Tiny (26 B)                | 25.2 ns | 985.2 MiB/s |
+| New Order Single (118 B)   | 151.4 ns| 743.1 MiB/s |
+| Execution Report (162 B)   | 210.3 ns| 734.6 MiB/s |
+| Market Data Snapshot (189 B) | 224.9 ns| 801.5 MiB/s |
 
-### `find()` strategy: binary search vs linear scan
+### `find()` strategy: why there is no tag index (measured)
 
-Measured on the Execution Report message:
+A sweep measured, per message, the cost of building a `BTreeMap` tag index
+versus a linear scan over the parsed field offsets, across field counts `n`
+(Apple M-series arm64). The index is rebuilt per message (no cross-message
+caching is possible in this design), so its build cost cannot amortize.
 
-| Strategy      | 1 lookup | 4 lookups | 8 lookups |
-|---------------|----------|-----------|-----------|
-| Binary search | 243.6 ns | 253.1 ns  | 263.3 ns  |
-| Linear scan   | 210.9 ns | 219.2 ns  | 229.1 ns  |
+Index build cost (per message):
 
-Binary search (via lazy sorted index) is the default. On small messages the
-sorted-index build cost means linear scan is faster for a handful of lookups;
-binary search pays off on larger messages and higher lookup counts.
+| n fields | 16 | 32 | 64 | 128 | 256 | 512 |
+|---|---:|---:|---:|---:|---:|---:|
+| BTreeMap | 270 ns | 281 ns | 627 ns | 1536 ns | 3414 ns | 7652 ns |
+
+Linear scan cost (single `find`):
+
+| n fields | first (tag 8) | mid | last / absent |
+|---|---:|---:|---:|
+| 16 | 0.49 ns | 2.26 ns | 4.27 ns |
+| 32 | 0.47 ns | 4.45 ns | 8.67 ns |
+| 64 | 0.45 ns | 8.99 ns | 19.89 ns |
+| 128 | 0.48 ns | 16.07 ns | 34.91 ns |
+| 256 | 0.44 ns | 34.96 ns | 67.19 ns |
+| 512 | 0.45 ns | 69.79 ns | 124.37 ns |
+
+The index build is ~1.7 ns · n · log₂(n); a linear full scan is ~0.25 ns · n.
+Even in the most favorable case for the index (an absent or trailing tag, which
+forces a full scan), breaking even requires ~8 · log₂(n) lookups — about 48 at
+n = 64 and 72 at n = 512. The first-field case (`find(8)`, the hottest path) is
+a single comparison and never breaks even.
+
+`find()`/`find_all()` therefore use a linear scan over the parsed offsets
+(`O(n)`). The `BTreeMap` index never pays off for realistic message sizes and
+lookup counts, so the library does not build one.
 
 ### Encode throughput
 
 | Message                     | Time    | Throughput  |
 |-----------------------------|---------|-------------|
-| Tiny (26 B)                 | 55.7 ns | 445.0 MiB/s |
-| New Order Single (118 B)    | 250.4 ns| 449.4 MiB/s |
-| Execution Report (162 B)    | 356.8 ns| 433.0 MiB/s |
-| Market Data Snapshot (189 B)| 360.3 ns| 500.3 MiB/s |
-| FIX 5.0 RootParties (129 B) | 276.6 ns| 444.8 MiB/s |
+| Tiny (26 B)                 | 32.7 ns | 758.6 MiB/s |
+| New Order Single (118 B)    | 193.3 ns| 582.1 MiB/s |
+| Execution Report (162 B)    | 275.9 ns| 560.0 MiB/s |
+| Market Data Snapshot (189 B)| 294.0 ns| 613.0 MiB/s |
+| FIX 5.0 RootParties (129 B) | 232.0 ns| 530.3 MiB/s |
 
 ### Roundtrip (decode + encode)
 
 | Message                   | Time    | Throughput  |
 |---------------------------|---------|-------------|
-| New Order Single (118 B)  | 249.1 ns| 451.8 MiB/s |
-| Execution Report (162 B)  | 367.6 ns| 420.3 MiB/s |
+| New Order Single (118 B)  | 192.8 ns| 583.7 MiB/s |
+| Execution Report (162 B)  | 273.6 ns| 564.8 MiB/s |
 
 ### FIX 5.0 group iteration
 
 | Benchmark                                   | Time    | Throughput  |
 |---------------------------------------------|---------|-------------|
-| RootParties → RootPartySubIDs iterate + find | 558.6 ns| 220.2 MiB/s |
+| RootParties → RootPartySubIDs iterate + find | 476.2 ns| 258.4 MiB/s |
 
 Run full benchmarks:
 
@@ -267,11 +329,13 @@ open target/criterion/report/index.html
 
 **Zero-copy** — `Message<'a>` and `Group<'a>` hold references into the original input buffer. No string copies. Values are `&[u8]` slices; callers parse numeric/string values as needed.
 
-**Reusable decoder** — `Decoder` holds a `Vec` internally. Reuse the same instance across messages to avoid repeated allocation. The decoder clears internal state on each `decode()` call.
+**Reusable decoder** — `Decoder` holds a single field-offset `Vec`. Reuse the same instance across messages to avoid repeated offset reallocation. The decoder clears it on each `decode()` call (capacity preserved).
 
-**Reusable internal buffers** — decoder field-offset storage and the encoder body scratch buffer are `Vec`s that are cleared (not dropped) between calls, so capacity is preserved across messages and steady-state encode/decode performs zero allocations.
+**Reusable internal buffers** — the decoder's field-offset `Vec` and the encoder's body scratch buffer are cleared (not dropped) between calls, so their capacity is preserved and steady-state `decode`/`encode` perform zero allocations.
 
-**Lazy sorted index** — `Message::find()` builds a sorted tag index on first call using `OnceCell`. Subsequent `find()` calls on the same message use binary search. If you only iterate with `fields()`, no sort ever happens.
+**Linear `find`/`find_all`** — `find` and `find_all` scan the wire-order offset slice (`O(n)`) and return matches in wire order. There is no tag index: measured, an eagerly built `BTreeMap` index costs more than it saves at realistic message sizes and lookup counts (see the `find()` strategy section above).
+
+**Lazy field iteration** — `Decoder::decode_fields` parses one field per `next()` directly from the buffer. It stores no offsets and no index, takes `&self`, and is allocation-free. It is not resumable: `buf` must be a complete message and a parse error fuses the iterator.
 
 **Group specs are `'static`** — built-in `GroupSpec` values reference static tag slices. Zero overhead at runtime.
 
@@ -317,6 +381,17 @@ for entry in msg.groups(&group::MSG_TYPES) {
     // ...
 }
 ```
+
+## Behavior changes in 0.3.0
+
+- `Decoder::decode` is allocation-free in steady state: no tag index is built;
+  the field-offset `Vec` is cleared and reused.
+- `Message::find` is now a linear scan and returns the **first occurrence in
+  wire order** (0.2.0 built a sorted index lazily on first `find` and returned
+  an arbitrary duplicate, due to an unstable sort).
+- New `Message::find_all` yields every occurrence of a tag in wire order.
+- New `Decoder::decode_fields` provides lazy, allocation-free field iteration.
+- The 0.2.0 `u16` field-index truncation caveat is gone (no index exists).
 
 ## Breaking changes in 0.2.0
 
