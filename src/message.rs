@@ -11,8 +11,8 @@ use crate::version::{self, FixVersion};
 /// Zero-copy: field values are sub-slices of the original input buffer — no
 /// bytes are copied when accessing fields.
 ///
-/// [`find`] and [`find_all`] are linear scans over the wire-order offsets; the
-/// message holds no tag index.
+/// [`find`](Self::find) and [`find_all`](Self::find_all) are linear scans over
+/// the wire-order offsets; the message holds no tag index.
 #[derive(Debug)]
 pub struct Message<'a> {
     /// The raw bytes of the complete FIX message as received (e.g. the network
@@ -324,7 +324,15 @@ impl<'a> Iterator for FieldsByTag<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Field<'a>> {
-        let pos = self.offsets.iter().position(|&(t, _, _)| t == self.tag)?;
+        let pos = match self.offsets.iter().position(|&(t, _, _)| t == self.tag) {
+            Some(pos) => pos,
+            None => {
+                // Truncate so a re-poll after exhaustion is O(1), not a
+                // repeated full scan over the remaining offsets.
+                self.offsets = &[];
+                return None;
+            }
+        };
         let (tag, start, end) = self.offsets[pos];
         self.offsets = &self.offsets[pos + 1..];
         Some(Field {

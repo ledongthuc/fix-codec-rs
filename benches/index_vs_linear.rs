@@ -1,11 +1,11 @@
-//! Evidence for dropping the `BTreeMap` tag index.
+//! Evidence for dropping the tag index.
 //!
 //! This binary measures, for a range of field counts `n`, the cost of building
-//! a reusable `BTreeMap<(Tag, u32), (u32, u32)>` index (the exact
-//! `rebuild_index()` cost `Decoder::decode` used to pay) versus a linear
+//! a reusable `BTreeMap<(Tag, u32), (u32, u32)>` index versus a linear
 //! `position()` scan over a pre-parsed `Vec<(Tag, u32, u32)>` (the current
 //! `find`/`find_all` implementation), at three lookup positions: first, mid,
-//! and last/absent.
+//! and last/absent. A `BTreeMap` build is more expensive than the lazy
+//! `sort_unstable` index removed in 0.3.0, so it overstates that index's cost.
 //!
 //! This replaces the flawed `bench_sorted_vs_linear` Criterion benchmark: both
 //! of its arms still paid `decode()`'s index build, so it misrepresented the
@@ -41,7 +41,7 @@ fn linear_find(offsets: &[(Tag, u32, u32)], tag: Tag) -> Option<usize> {
     offsets.iter().position(|&(t, _, _)| t == tag)
 }
 
-/// Rebuild the tag index (clear + insert) exactly as `rebuild_index()` did.
+/// Rebuild a tree tag index (clear + insert).
 fn build_index(offsets: &[(Tag, u32, u32)], map: &mut BTreeMap<(Tag, u32), (u32, u32)>) {
     map.clear();
     for (i, &(tag, start, end)) in offsets.iter().enumerate() {

@@ -262,10 +262,17 @@ and `Encoder` is 32 B.
 
 ### `find()` strategy: why there is no tag index (measured)
 
-A sweep measured, per message, the cost of building a `BTreeMap` tag index
-versus a linear scan over the parsed field offsets, across field counts `n`
-(Apple M-series arm64). The index is rebuilt per message (no cross-message
-caching is possible in this design), so its build cost cannot amortize.
+0.2.0 built a sorted tag index lazily on the first `find()` call
+(`sort_unstable_by_key` over `(tag, offset)` pairs, followed by binary search).
+This version removes the index: `find`/`find_all` are linear scans over the
+wire-order offsets.
+
+A sweep measured, per message, the cost of building a tag index versus a linear
+scan over the parsed field offsets, across field counts `n` (Apple M-series
+arm64). The index is measured as a `BTreeMap<(Tag, u32), (u32, u32)>` build; a
+`BTreeMap` is *more* expensive to build than 0.2.0's `sort_unstable` of a
+`Vec`, so these numbers overstate what the removed index cost. The linear-scan
+numbers are unaffected.
 
 Index build cost (per message):
 
@@ -287,12 +294,13 @@ Linear scan cost (single `find`):
 The index build is ~1.7 ns · n · log₂(n); a linear full scan is ~0.25 ns · n.
 Even in the most favorable case for the index (an absent or trailing tag, which
 forces a full scan), breaking even requires ~8 · log₂(n) lookups — about 48 at
-n = 64 and 72 at n = 512. The first-field case (`find(8)`, the hottest path) is
-a single comparison and never breaks even.
+n = 64 and 72 at n = 512 — and that is against the already-overstated
+`BTreeMap` build. The first-field case (`find(8)`, the hottest path) is a
+single comparison and never breaks even.
 
 `find()`/`find_all()` therefore use a linear scan over the parsed offsets
-(`O(n)`). The `BTreeMap` index never pays off for realistic message sizes and
-lookup counts, so the library does not build one.
+(`O(n)`). A tag index never pays off for realistic message sizes and lookup
+counts, so the library does not build one.
 
 ### Encode throughput
 
@@ -333,9 +341,9 @@ open target/criterion/report/index.html
 
 **Reusable internal buffers** — the decoder's field-offset `Vec` and the encoder's body scratch buffer are cleared (not dropped) between calls, so their capacity is preserved and steady-state `decode`/`encode` perform zero allocations.
 
-**Linear `find`/`find_all`** — `find` and `find_all` scan the wire-order offset slice (`O(n)`) and return matches in wire order. There is no tag index: measured, an eagerly built `BTreeMap` index costs more than it saves at realistic message sizes and lookup counts (see the `find()` strategy section above).
+**Linear `find`/`find_all`** — `find` and `find_all` scan the wire-order offset slice (`O(n)`) and return matches in wire order. There is no tag index: measured, building a tag index costs more than it saves at realistic message sizes and lookup counts (see the `find()` strategy section above).
 
-**Lazy field iteration** — `Decoder::decode_fields` parses one field per `next()` directly from the buffer. It stores no offsets and no index, takes `&self`, and is allocation-free. It is not resumable: `buf` must be a complete message and a parse error fuses the iterator.
+**Lazy field iteration** — `Decoder::decode_fields` parses one field per `next()` directly from the buffer. It stores no offsets and no index, takes `&self`, and is allocation-free. It is not resumable: `buf` must be a complete message and a parse error stops the iterator permanently (subsequent `next()` returns `None`).
 
 **Group specs are `'static`** — built-in `GroupSpec` values reference static tag slices. Zero overhead at runtime.
 

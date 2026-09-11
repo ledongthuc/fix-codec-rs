@@ -84,8 +84,8 @@ impl Decoder {
     /// Each [`FieldsIter::next`] parses one field from `buf`; no offsets and no
     /// index are stored, and only `buf` is borrowed. This is *not*
     /// resumable/incremental — `buf` must be a complete message. On a parse
-    /// error the offending item is yielded as `Err(..)` and the iterator is
-    /// fused (subsequent `next()` returns `None`).
+    /// error the offending item is yielded as `Err(..)` and iteration stops:
+    /// subsequent `next()` returns `None`.
     ///
     /// Empty buffers yield an empty iterator (no error).
     #[inline]
@@ -125,11 +125,12 @@ impl Decoder {
     }
 }
 
-/// A lazy, fused iterator over the fields of a complete FIX message.
+/// A lazy iterator over the fields of a complete FIX message.
 ///
 /// Produced by [`Decoder::decode_fields`]. Each `next()` parses one field on
 /// demand from the borrowed buffer. It stores no offsets and no index, and is
-/// not resumable — `buf` must be a complete message.
+/// not resumable — `buf` must be a complete message. After the first parse
+/// error the iterator stops permanently (subsequent `next()` returns `None`).
 pub struct FieldsIter<'a> {
     buf: &'a [u8],
     pos: usize,
@@ -152,7 +153,7 @@ impl<'a> Iterator for FieldsIter<'a> {
             }
         };
 
-        // Parse the tag; on error, fuse and surface the error once.
+        // Parse the tag; on error, stop the iterator and surface the error once.
         let tag = match parse_tag(&self.buf[self.pos..eq_pos]) {
             Ok(tag) => tag,
             Err(err) => {
